@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kernel Silo Monitor</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: #f0f0f0; color: #eee; padding: 16px; }
+    h1 { text-align: center; color: #e94560; margin-bottom: 4px; font-size: 20px; }
+    .subtitle { text-align: center; color: #1a1a2e; font-size: 12px; margin-bottom: 16px; }
+    .card { background: #16213e; border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+    .card h2 { color: #0f3460; background: #e94560; padding: 6px 12px;
+               border-radius: 8px; font-size: 14px; margin-bottom: 12px; }
+    .row { display: flex; justify-content: space-between; margin-bottom: 8px; }
+    .label { color: #aaa; font-size: 13px; }
+    .value { font-weight: bold; color: #fff; font-size: 13px; }
+    .value.ok { color: #4ecca3; }
+    .value.warn { color: #f5a623; }
+    .divider { border: none; border-top: 1px solid #0f3460; margin: 8px 0; }
+    .form-group { margin-bottom: 10px; }
+    .form-group label { display: block; color: #aaa; font-size: 12px; margin-bottom: 4px; }
+    .form-group input { width: 100%; padding: 8px; border-radius: 6px;
+                        border: 1px solid #0f3460; background: #0f3460;
+                        color: #fff; font-size: 14px; text-align: center; }
+    .btn { width: 100%; padding: 12px; background: #e94560; color: white;
+           border: none; border-radius: 8px; font-size: 15px;
+           cursor: pointer; margin-top: 4px; }
+    .btn:active { background: #c73652; }
+    .interval-input {
+      width: 100%; padding: 12px; background: #e94560; color: white;
+      border: none; border-radius: 8px; font-size: 15px;
+      cursor: text; margin-top: 4px; text-align: center; box-sizing: border-box;
+    }
+    .interval-input::placeholder { color: rgba(255,255,255,0.65); }
+    .interval-input:focus { outline: 2px solid #fff; outline-offset: 2px; }
+    .alert { padding: 10px; border-radius: 8px; text-align: center;
+             font-size: 13px; margin-top: 8px; display: none; }
+    .alert.success { background: #1a472a; color: #4ecca3; display: block; }
+    .alert.error   { background: #4a1a1a; color: #e94560; display: block; }
+    .timestamp { text-align: center; color: #555; font-size: 11px; margin-top: 8px; }
+    .loading-overlay { display: none; position: fixed; top: 0; left: 0;
+      width: 100%; height: 100%; background: rgba(0,0,0,0.6);
+      z-index: 999; justify-content: center; align-items: center; flex-direction: column; }
+    .loading-overlay.active { display: flex; }
+    .spinner { width: 48px; height: 48px; border: 5px solid #0f3460;
+      border-top: 5px solid #e94560; border-radius: 50%;
+      animation: spin 0.8s linear infinite; }
+    .loading-text { color: #fff; margin-top: 12px; font-size: 14px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+  <div class="loading-overlay" id="loading">
+    <div class="spinner"></div>
+    <p class="loading-text" id="loading_text">Memproses...</p>
+  </div>
+
+  <h1>🌾 Kernel Silo Monitor</h1>
+  <p class="subtitle">Palm Kernel Moisture Control System</p>
+
+  <div class="card" id="wifi_card" style="display:none; background:#4a1a1a;">
+    <div style="text-align:center; color:#e94560; font-size:13px;">
+      ⚠️ Koneksi ke ESP32 terputus! Halaman tidak terupdate.
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>📡 Sensor 1 — Utama (GPIO 4)</h2>
+    <div class="row"><span class="label">Suhu</span><span class="value ok" id="temp1_cal">-</span></div>
+    <div class="row"><span class="label">Kelembaban</span><span class="value ok" id="hum1_cal">-</span></div>
+  </div>
+
+  <div class="card">
+    <h2>📡 Sensor 2 — Info (GPIO 15)</h2>
+    <div class="row"><span class="label">Suhu</span><span class="value ok" id="temp2_cal">-</span></div>
+    <div class="row"><span class="label">Kelembaban</span><span class="value ok" id="hum2_cal">-</span></div>
+  </div>
+
+  <div class="card">
+    <h2>🔧 Aktuator linear</h2>
+    <p style="color:#aaa; font-size:11px; margin-bottom:10px;">
+      Stroke mekanik hingga <b id="act_stroke_lbl">50</b> cm. Posisi estimasi dari waktu × <span id="act_speed_lbl">1.5</span> cm/s.
+    </p>
+    <div class="row"><span class="label">Posisi (estimasi)</span><span class="value ok" id="valve_status">-</span></div>
+    <div class="row"><span class="label">Posisi sebelumnya</span><span class="value" id="act_y_tgt_disp">-</span></div>
+    <div class="row"><span class="label">Kelembaban Sensor 1</span><span class="value" id="avg_hum">-</span></div>
+    <div class="row"><span class="label">Peta RH → stem</span>
+      <span class="value" style="color:#aaa; font-size:12px; text-align:right; max-width:58%;" id="act_map_hint">-</span></div>
+    <div class="row" id="act_busy_row" style="display:none;">
+      <span class="label">Gerak</span><span class="value warn">⏳ Relay aktif…</span>
+    </div>
+    <hr class="divider">
+    <b style="color:#e94560; font-size:13px;">🖐 Kontrol Manual</b>
+    <p style="color:#aaa; font-size:11px; margin:4px 0 6px 0;">
+      PT = panjang total, DT = durasi total → <b>1 cm = DT/PT detik</b>. PD = posisi diinginkan (cm).
+    </p>
+    <div class="row" style="margin-bottom:6px;">
+      <span class="label">PT / DT / cm per s</span>
+      <span class="value" style="color:#aaa; font-size:11px; text-align:right; max-width:62%;" id="man_cal_hint">-</span>
+    </div>
+    <div class="form-group" style="margin-bottom:8px;">
+      <label>Panjang diinginkan PD (cm)</label>
+      <input type="text" inputmode="decimal" id="manual_pd_cm" autocomplete="off" class="interval-input"
+        style="font-size:14px;" placeholder="contoh: 15"
+        oninput="updateManualMoveHint()" onfocus="manualMoveEditing=true" onblur="manualMoveEditing=false">
+      <p style="color:#888; font-size:11px; margin-top:6px;">
+        Perkiraan: <b id="manual_move_hint">-</b> · target dibatasi
+        <span id="act_y_min_hint">0</span>–<span id="act_y_max_hint">30</span> cm
+      </p>
+    </div>
+    <button type="button" class="btn" onclick="manualValveOn()">ON</button>
+    <div id="valve_alert" class="alert"></div>
+    <hr class="divider">
+    <div class="row"><span class="label">Interval Cek</span><span class="value ok" id="relay_interval">-</span></div>
+    <div style="margin-top:12px;">
+      <b style="color:#e94560; font-size:13px;">⏱ Ubah Interval Cek</b>
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Interval (detik)</label>
+        <input type="text" inputmode="numeric" id="relay_interval_input" autocomplete="off"
+          placeholder="contoh: 300" class="interval-input"
+          onfocus="relayIntervalEditing=true" onblur="relayIntervalEditing=false"
+          onkeydown="if(event.key==='Enter')applyCustomInterval();">
+        <button type="button" onclick="applyCustomInterval()" class="btn">Terapkan interval</button>
+      </div>
+      <div id="interval_alert" class="alert" style="margin-top:4px;"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>⚙️ Setting aktuator linear</h2>
+    <p style="color:#aaa; font-size:11px; margin-bottom:10px;">
+      RH rendah (≤ RH min) → pintu <b>terbuka penuh</b> (Y maks). RH tinggi (≥ RH maks) → pintu <b>tertutup</b> (Y min). Di antaranya diinterpolasi linear terbalik.
+    </p>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+      <div class="form-group" style="margin:0;"><label>RH minimum (%)</label>
+        <input type="text" inputmode="decimal" id="act_h_min" autocomplete="off" class="interval-input" style="font-size:14px;"></div>
+      <div class="form-group" style="margin:0;"><label>RH maksimum (%)</label>
+        <input type="text" inputmode="decimal" id="act_h_max" autocomplete="off" class="interval-input" style="font-size:14px;"></div>
+      <div class="form-group" style="margin:0;"><label>Stroke min (cm)</label>
+        <input type="text" inputmode="decimal" id="act_y_min" autocomplete="off" class="interval-input" style="font-size:14px;"></div>
+      <div class="form-group" style="margin:0;"><label>Stroke maks (cm)</label>
+        <input type="text" inputmode="decimal" id="act_y_max" autocomplete="off" class="interval-input" style="font-size:14px;"></div>
+      <div class="form-group" style="margin:0;"><label>Kecepatan (cm/s)</label>
+        <input type="text" inputmode="decimal" id="act_speed" autocomplete="off" class="interval-input" style="font-size:14px;"></div>
+      <div class="form-group" style="margin:0;"><label>Durasi maks / gerak (s)</label>
+        <input type="text" inputmode="decimal" id="act_max_dur" autocomplete="off" class="interval-input" style="font-size:14px;"></div>
+      <div class="form-group" style="margin:0;"><label>PT — panjang total (cm)</label>
+        <input type="text" inputmode="decimal" id="pt_total" autocomplete="off" class="interval-input" style="font-size:14px;"></div>
+      <div class="form-group" style="margin:0;"><label>DT — durasi total (s)</label>
+        <input type="text" inputmode="decimal" id="dt_total" autocomplete="off" class="interval-input" style="font-size:14px;"></div>
+    </div>
+    <button type="button" class="btn" onclick="saveActuatorSettings()">💾 Simpan setting aktuator</button>
+    <div id="actuator_alert" class="alert"></div>
+  </div>
+
+  <div class="card">
+    <h2>⚙️ Setting Kalibrasi</h2>
+    <p style="color:#aaa; font-size:12px; margin-bottom:12px;">
+      Offset = Nilai Referensi - Nilai Sensor<br>
+      Contoh: ref=28.0, sensor=28.5 → offset=-0.5
+    </p>
+    <b style="color:#e94560; font-size:13px;">Sensor 1</b>
+    <div style="display:flex; gap:8px; margin-top:8px; margin-bottom:12px;">
+      <div class="form-group" style="flex:1"><label>Offset Suhu (°C)</label>
+        <div style="display:flex; gap:4px;">
+          <button onclick="adjustValue('t1off',-0.1)" style="padding:8px 12px; background:#0f3460; color:#fff; border:none; border-radius:6px; font-size:16px; cursor:pointer;">−</button>
+          <input type="text" id="t1off" placeholder="0.0">
+          <button onclick="adjustValue('t1off', 0.1)" style="padding:8px 12px; background:#0f3460; color:#fff; border:none; border-radius:6px; font-size:16px; cursor:pointer;">+</button>
+        </div>
+      </div>
+      <div class="form-group" style="flex:1"><label>Offset RH (%)</label>
+        <div style="display:flex; gap:4px;">
+          <button onclick="adjustValue('h1off',-0.1)" style="padding:8px 12px; background:#0f3460; color:#fff; border:none; border-radius:6px; font-size:16px; cursor:pointer;">−</button>
+          <input type="text" id="h1off" placeholder="0.0">
+          <button onclick="adjustValue('h1off', 0.1)" style="padding:8px 12px; background:#0f3460; color:#fff; border:none; border-radius:6px; font-size:16px; cursor:pointer;">+</button>
+        </div>
+      </div>
+    </div>
+    <b style="color:#e94560; font-size:13px;">Sensor 2</b>
+    <div style="display:flex; gap:8px; margin-top:8px; margin-bottom:12px;">
+      <div class="form-group" style="flex:1"><label>Offset Suhu (°C)</label>
+        <div style="display:flex; gap:4px;">
+          <button onclick="adjustValue('t2off',-0.1)" style="padding:8px 12px; background:#0f3460; color:#fff; border:none; border-radius:6px; font-size:16px; cursor:pointer;">−</button>
+          <input type="text" id="t2off" placeholder="0.0">
+          <button onclick="adjustValue('t2off', 0.1)" style="padding:8px 12px; background:#0f3460; color:#fff; border:none; border-radius:6px; font-size:16px; cursor:pointer;">+</button>
+        </div>
+      </div>
+      <div class="form-group" style="flex:1"><label>Offset RH (%)</label>
+        <div style="display:flex; gap:4px;">
+          <button onclick="adjustValue('h2off',-0.1)" style="padding:8px 12px; background:#0f3460; color:#fff; border:none; border-radius:6px; font-size:16px; cursor:pointer;">−</button>
+          <input type="text" id="h2off" placeholder="0.0">
+          <button onclick="adjustValue('h2off', 0.1)" style="padding:8px 12px; background:#0f3460; color:#fff; border:none; border-radius:6px; font-size:16px; cursor:pointer;">+</button>
+        </div>
+      </div>
+    </div>
+    <button class="btn" onclick="saveCalibration()">💾 Simpan Kalibrasi</button>
+    <div id="alert" class="alert"></div>
+  </div>
+
+  <div class="card">
+    <h2>📊 Log Data Sensor</h2>
+    <div class="row"><span class="label">Total Entri</span><span class="value ok" id="log_entries">-</span></div>
+    <div class="row"><span class="label">Storage Terpakai</span><span class="value" id="log_used">-</span></div>
+    <div class="row"><span class="label">Storage Tersisa</span><span class="value ok" id="log_free">-</span></div>
+    <hr class="divider">
+    <div style="display:flex; gap:8px; margin-top:8px;">
+      <a href="/log/download" style="flex:2; text-decoration:none;">
+        <button class="btn" style="width:100%;">⬇️ Download Log</button>
+      </a>
+      <button onclick="clearLogData()" class="btn" style="flex:1; background:#4a1a1a; color:#e94560;">🗑 Hapus</button>
+    </div>
+    <div id="log_alert" class="alert"></div>
+  </div>
+
+  <div class="card">
+    <h2>🕒 System (RTC & Log)</h2>
+    <div class="row"><span class="label">RTC sekarang</span><span class="value ok" id="rtc_now">-</span></div>
+    <div style="display:flex; gap:8px; margin-top:8px;">
+      <button class="btn" style="flex:1;" onclick="syncRtcFromBrowser()">Sinkron RTC (waktu device)</button>
+      <button class="btn" style="flex:1;" onclick="syncRtcFromNtp()">Sinkron RTC dari NTP</button>
+    </div>
+    <div id="rtc_alert" class="alert"></div>
+    <hr class="divider">
+    <div class="row"><span class="label">Interval log data</span><span class="value" id="log_interval_view">-</span></div>
+    <div class="form-group" style="margin-top:8px; margin-bottom:0;">
+      <label>Ubah interval log (detik)</label>
+      <input type="text" inputmode="numeric" id="log_interval_input" autocomplete="off"
+        class="interval-input" placeholder="contoh: 3600">
+      <button class="btn" onclick="setLogInterval()">Simpan interval log</button>
+    </div>
+    <div id="log_interval_alert" class="alert"></div>
+  </div>
+
+  <p class="timestamp" id="ts">Update terakhir: -</p>
+
+  <script>
+    let relayIntervalEditing = false;
+    let manualMoveEditing = false;
+    let currentActY = 0;
+
+    function showLoading(text = 'Memproses...') {
+      document.getElementById('loading_text').textContent = text;
+      document.getElementById('loading').classList.add('active');
+    }
+    function hideLoading() {
+      document.getElementById('loading').classList.remove('active');
+    }
+    function formatIntervalMs(ms) {
+      if (ms >= 60000) {
+        const m = ms / 60000;
+        return (Math.abs(m - Math.round(m)) < 1e-6 ? Math.round(m) : m.toFixed(1)) + ' menit';
+      }
+      return (ms / 1000) + ' detik';
+    }
+
+    function fetchData() {
+      fetch('/data')
+        .then(r => r.json())
+        .then(d => {
+          document.getElementById('wifi_card').style.display = 'none';
+          document.getElementById('temp1_cal').textContent = d.temp1_cal + ' °C';
+          document.getElementById('hum1_cal').textContent  = d.hum1_cal  + ' %';
+          document.getElementById('temp2_cal').textContent = d.temp2_cal + ' °C';
+          document.getElementById('hum2_cal').textContent  = d.hum2_cal  + ' %';
+          document.getElementById('ts').textContent = 'Update terakhir: ' + d.timestamp;
+
+          if (document.activeElement.id !== 't1off') document.getElementById('t1off').value = d.t1off;
+          if (document.activeElement.id !== 'h1off') document.getElementById('h1off').value = d.h1off;
+          if (document.activeElement.id !== 't2off') document.getElementById('t2off').value = d.t2off;
+          if (document.activeElement.id !== 'h2off') document.getElementById('h2off').value = d.h2off;
+
+          document.getElementById('valve_status').textContent = d.valve_status;
+          document.getElementById('valve_status').style.color = '#4ecca3';
+          document.getElementById('act_y_tgt_disp').textContent = d.act_y_prev + ' cm';
+          document.getElementById('avg_hum').textContent = d.avg_hum + ' %';
+          document.getElementById('act_stroke_lbl').textContent = d.act_stroke_cm;
+          document.getElementById('act_speed_lbl').textContent = d.act_speed;
+          document.getElementById('act_map_hint').textContent =
+            'RH ' + d.act_h_min + '% → ' + d.act_y_max + ' cm (buka) | RH ' + d.act_h_max + '% → ' + d.act_y_min + ' cm (tutup)';
+          document.getElementById('act_busy_row').style.display = d.act_busy ? 'flex' : 'none';
+          currentActY = parseFloat(d.act_y_cur) || 0;
+          document.getElementById('man_cal_hint').textContent =
+            'PT=' + d.pt_cm + ' cm, DT=' + d.dt_s + ' s → ' + d.man_speed + ' cm/s';
+          document.getElementById('act_y_min_hint').textContent = d.act_y_min;
+          document.getElementById('act_y_max_hint').textContent = d.act_y_max;
+
+          const actIds = ['act_h_min','act_h_max','act_y_min','act_y_max','act_speed','act_max_dur','pt_total','dt_total'];
+          const editingAct = document.activeElement && actIds.indexOf(document.activeElement.id) >= 0;
+          if (!editingAct) {
+            document.getElementById('act_h_min').value = d.act_h_min;
+            document.getElementById('act_h_max').value = d.act_h_max;
+            document.getElementById('act_y_min').value = d.act_y_min;
+            document.getElementById('act_y_max').value = d.act_y_max;
+            document.getElementById('act_speed').value = d.act_speed;
+            document.getElementById('act_max_dur').value = d.act_max_dur;
+            document.getElementById('pt_total').value = d.pt_cm;
+            document.getElementById('dt_total').value = d.dt_s;
+          }
+          if (!manualMoveEditing) updateManualMoveHint();
+
+          const ms = d.relay_interval_ms;
+          document.getElementById('relay_interval').textContent = formatIntervalMs(ms);
+          if (!relayIntervalEditing)
+            document.getElementById('relay_interval_input').value = Math.round(ms / 1000);
+
+          document.getElementById('rtc_now').textContent = d.rtc_now || '-';
+          document.getElementById('log_interval_view').textContent = formatIntervalMs(d.log_interval_ms || 0);
+          if (document.activeElement.id !== 'log_interval_input')
+            document.getElementById('log_interval_input').value = Math.round((d.log_interval_ms || 0) / 1000);
+
+          fetchLogInfo();
+        })
+        .catch(() => {
+          document.getElementById('ts').textContent = 'Gagal koneksi ke ESP32';
+          document.getElementById('wifi_card').style.display = 'block';
+        });
+    }
+
+    function clearLogData() {
+      if (!confirm('Yakin hapus semua log?')) return;
+      showLoading('Menghapus log...');
+      fetch('/log/clear')
+        .then(r => r.json())
+        .then(d => {
+          hideLoading();
+          const el = document.getElementById('log_alert');
+          el.className = 'alert success';
+          el.textContent = '✅ Log berhasil dihapus!';
+          setTimeout(() => el.style.display = 'none', 3000);
+          fetchLogInfo();
+        })
+        .catch(() => { hideLoading(); });
+    }
+
+    function fetchLogInfo() {
+      fetch('/log/info')
+        .then(r => r.json())
+        .then(d => {
+          document.getElementById('log_entries').textContent = d.entries + ' data';
+          document.getElementById('log_used').textContent   = d.used_kb + ' KB';
+          document.getElementById('log_free').textContent   = d.free_kb + ' KB';
+        });
+    }
+
+    function adjustValue(id, delta) {
+      const input = document.getElementById(id);
+      const current = parseFloat(input.value) || 0;
+      input.value = (current + delta).toFixed(1);
+    }
+
+    function saveCalibration() {
+      const t1 = parseFloat(document.getElementById('t1off').value);
+      const h1 = parseFloat(document.getElementById('h1off').value);
+      const t2 = parseFloat(document.getElementById('t2off').value);
+      const h2 = parseFloat(document.getElementById('h2off').value);
+      if (isNaN(t1) || isNaN(h1) || isNaN(t2) || isNaN(h2)) {
+        const el = document.getElementById('alert');
+        el.className = 'alert error'; el.textContent = '❌ Input tidak valid!';
+        setTimeout(() => el.style.display = 'none', 3000); return;
+      }
+      showLoading('Menyimpan kalibrasi...');
+      fetch('/calibrate?t1=' + t1 + '&h1=' + h1 + '&t2=' + t2 + '&h2=' + h2)
+        .then(r => r.json())
+        .then(d => {
+          hideLoading();
+          const el = document.getElementById('alert');
+          el.className = 'alert ' + (d.success ? 'success' : 'error');
+          el.textContent = d.success ? '✅ Kalibrasi disimpan!' : '❌ Gagal menyimpan!';
+          setTimeout(() => el.style.display = 'none', 4000);
+        })
+        .catch(() => { hideLoading(); });
+    }
+
+    function showIntervalAlert(ok, text) {
+      const el = document.getElementById('interval_alert');
+      el.style.display = 'block';
+      el.className = 'alert ' + (ok ? 'success' : 'error');
+      el.textContent = text;
+      setTimeout(() => { el.style.display = 'none'; }, 3500);
+    }
+
+    function applyCustomInterval() {
+      const sec = parseFloat(document.getElementById('relay_interval_input').value.trim().replace(',', '.'));
+      if (isNaN(sec) || sec < 5)     { showIntervalAlert(false, '❌ Minimal 5 detik.'); return; }
+      if (sec > 86400)               { showIntervalAlert(false, '❌ Maksimal 86400 detik.'); return; }
+      setInterval_ms(Math.round(sec * 1000));
+    }
+
+    function setInterval_ms(ms) {
+      showLoading('Mengubah interval...');
+      fetch('/setinterval?ms=' + ms)
+        .then(r => r.json())
+        .then(d => {
+          hideLoading();
+          const applied = d.interval_ms;
+          document.getElementById('relay_interval_input').value = Math.round(applied / 1000);
+          document.getElementById('relay_interval').textContent = formatIntervalMs(applied);
+          showIntervalAlert(true, '✅ Interval: ' + formatIntervalMs(applied));
+        })
+        .catch(() => { hideLoading(); showIntervalAlert(false, '❌ Gagal mengubah interval.'); });
+    }
+
+    function showAlert(id, ok, text, timeoutMs = 3500) {
+      const el = document.getElementById(id);
+      el.style.display = 'block';
+      el.className = 'alert ' + (ok ? 'success' : 'error');
+      el.textContent = text;
+      setTimeout(() => { el.style.display = 'none'; }, timeoutMs);
+    }
+
+    function syncRtcFromBrowser() {
+      const n = new Date();
+      const q = 'y=' + n.getFullYear() + '&mo=' + (n.getMonth()+1) + '&d=' + n.getDate()
+        + '&h=' + n.getHours() + '&mi=' + n.getMinutes() + '&s=' + n.getSeconds();
+      showLoading('Sinkron RTC...');
+      fetch('/rtc/set?' + q)
+        .then(r => r.json())
+        .then(d => {
+          hideLoading();
+          showAlert('rtc_alert', !!d.success, d.success ? ('✅ RTC diset: ' + d.rtc_now) : ('❌ ' + (d.error || 'Gagal')));
+          fetchData();
+        })
+        .catch(() => { hideLoading(); showAlert('rtc_alert', false, '❌ Koneksi gagal'); });
+    }
+
+    function syncRtcFromNtp() {
+      showLoading('Sinkron RTC via NTP...');
+      fetch('/rtc/ntp')
+        .then(r => r.json())
+        .then(d => {
+          hideLoading();
+          showAlert('rtc_alert', !!d.success, d.success ? ('✅ RTC sinkron NTP: ' + d.rtc_now) : ('❌ ' + (d.error || 'Gagal')));
+          fetchData();
+        })
+        .catch(() => { hideLoading(); showAlert('rtc_alert', false, '❌ Koneksi gagal'); });
+    }
+
+    function setLogInterval() {
+      const sec = parseFloat(document.getElementById('log_interval_input').value.trim().replace(',', '.'));
+      if (isNaN(sec) || sec < 1)  { showAlert('log_interval_alert', false, '❌ Minimal 1 detik.'); return; }
+      if (sec > 86400)            { showAlert('log_interval_alert', false, '❌ Maksimal 86400 detik.'); return; }
+      showLoading('Menyimpan interval log...');
+      fetch('/log/setinterval?ms=' + Math.round(sec * 1000))
+        .then(r => r.json())
+        .then(d => {
+          hideLoading();
+          if (d.success) {
+            document.getElementById('log_interval_input').value = Math.round(d.log_interval_ms / 1000);
+            document.getElementById('log_interval_view').textContent = formatIntervalMs(d.log_interval_ms);
+          }
+          showAlert('log_interval_alert', !!d.success,
+            d.success ? ('✅ Interval log: ' + formatIntervalMs(d.log_interval_ms)) : ('❌ ' + (d.error || 'Gagal')));
+        })
+        .catch(() => { hideLoading(); showAlert('log_interval_alert', false, '❌ Koneksi gagal'); });
+    }
+
+    function updateManualMoveHint() {
+      const pd  = parseFloat(document.getElementById('manual_pd_cm').value.trim().replace(',', '.'));
+      const PT  = parseFloat(String(document.getElementById('pt_total').value).replace(',', '.'));
+      const DT  = parseFloat(String(document.getElementById('dt_total').value).replace(',', '.'));
+      const yMin = parseFloat(String(document.getElementById('act_y_min').value).replace(',', '.'));
+      const yMax = parseFloat(String(document.getElementById('act_y_max').value).replace(',', '.'));
+      const el  = document.getElementById('manual_move_hint');
+      if (isNaN(pd) || isNaN(PT) || PT <= 0 || isNaN(DT) || DT <= 0) { el.textContent = '-'; return; }
+      const k   = DT / PT;
+      const y   = currentActY;
+      const lo  = isNaN(yMin) ? 0 : yMin;
+      const hi  = isNaN(yMax) ? 50 : yMax;
+      const pdc = Math.min(Math.max(pd, lo), hi);
+      const x   = -1 * ((y * k) - (k * pdc));
+      const dur = Math.abs(pdc - y) * (DT / PT);
+      const dir = x > 0 ? 'buka (OPEN)' : (x < 0 ? 'tutup (CLOSE)' : '—');
+      el.textContent = 'Δ=' + (pdc - y).toFixed(2) + ' cm, x ' + (x >= 0 ? '+' : '') + x.toFixed(4) + ' → ' + dir + ', ~' + dur.toFixed(2) + ' s';
+    }
+
+    function manualValveOn() {
+      const pd = parseFloat(document.getElementById('manual_pd_cm').value.trim().replace(',', '.'));
+      if (isNaN(pd)) {
+        const el = document.getElementById('valve_alert');
+        el.style.display = 'block'; el.className = 'alert error';
+        el.textContent = '❌ Isi PD (cm) lebih dulu.';
+        setTimeout(() => el.style.display = 'none', 3500); return;
+      }
+      const hint = document.getElementById('manual_move_hint').textContent;
+      showLoading('ON…');
+      fetch('/valve/on?pd=' + encodeURIComponent(pd))
+        .then(r => r.json().then(d => ({ ok: r.ok, d })))
+        .then(({ ok, d }) => {
+          hideLoading();
+          const el = document.getElementById('valve_alert');
+          el.style.display = 'block';
+          el.className = ok && d.success ? 'alert success' : 'alert error';
+          el.textContent = ok && d.success
+            ? '✅ ON → target ' + d.target_cm + ' cm. ' + hint
+            : '❌ ' + (d.error || 'Gagal.');
+          setTimeout(() => el.style.display = 'none', 6000);
+        })
+        .catch(() => {
+          hideLoading();
+          const el = document.getElementById('valve_alert');
+          el.className = 'alert error'; el.textContent = '❌ Koneksi gagal!';
+          setTimeout(() => el.style.display = 'none', 3000);
+        });
+    }
+
+    function saveActuatorSettings() {
+      const hmin = parseFloat(String(document.getElementById('act_h_min').value).replace(',', '.'));
+      const hmax = parseFloat(String(document.getElementById('act_h_max').value).replace(',', '.'));
+      const ymin = parseFloat(String(document.getElementById('act_y_min').value).replace(',', '.'));
+      const ymax = parseFloat(String(document.getElementById('act_y_max').value).replace(',', '.'));
+      const spd  = parseFloat(String(document.getElementById('act_speed').value).replace(',', '.'));
+      const dur  = parseFloat(String(document.getElementById('act_max_dur').value).replace(',', '.'));
+      const pt   = parseFloat(String(document.getElementById('pt_total').value).replace(',', '.'));
+      const dt   = parseFloat(String(document.getElementById('dt_total').value).replace(',', '.'));
+      if ([hmin,hmax,ymin,ymax,spd,dur,pt,dt].some(x => isNaN(x))) {
+        const el = document.getElementById('actuator_alert');
+        el.className = 'alert error'; el.textContent = '❌ Semua field harus angka valid.';
+        el.style.display = 'block';
+        setTimeout(() => el.style.display = 'none', 3500); return;
+      }
+      const q = 'hmin=' + hmin + '&hmax=' + hmax + '&ymin=' + ymin + '&ymax=' + ymax
+        + '&speed=' + spd + '&maxdur=' + dur + '&pt=' + pt + '&dt=' + dt;
+      showLoading('Menyimpan setting aktuator…');
+      fetch('/actuator/save?' + q)
+        .then(r => r.json())
+        .then(d => {
+          hideLoading();
+          const el = document.getElementById('actuator_alert');
+          el.style.display = 'block';
+          el.className = 'alert ' + (d.success ? 'success' : 'error');
+          el.textContent = d.success ? '✅ Setting aktuator disimpan.' : ('❌ ' + (d.error || 'Gagal'));
+          setTimeout(() => el.style.display = 'none', 4000);
+        })
+        .catch(() => {
+          hideLoading();
+          const el = document.getElementById('actuator_alert');
+          el.className = 'alert error'; el.textContent = '❌ Koneksi gagal';
+          el.style.display = 'block';
+        });
+    }
+
+    fetchData();
+    setInterval(fetchData, 5000);
+    fetchLogInfo();
+  </script>
+</body>
+</html>
