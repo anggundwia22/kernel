@@ -501,8 +501,8 @@ void updateActuatorFromHumidity()
 
     const float hMin    = config.hMin;
     const float hMax    = config.hMax;
-    const float yPreset = config.yPreset;
     const float yMax    = config.yMax;
+    const float yMin    = config.yMin;
     const float maxDurS = config.maxDurS;
 
     if (maxDurS <= 0.0f || hMax <= hMin || yMax <= yMin + 0.01f) {
