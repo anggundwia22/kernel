@@ -155,9 +155,12 @@
     <div id="valve_alert" class="alert"></div>
     </div>
     <hr class="divider">
-    <div class="row"><span class="label">Interval Cek</span><span class="value ok" id="relay_interval">-</span></div>
+    <p style="color:#888; font-size:11px; margin-bottom:8px;">
+      Interval ini memacu <b>pembacaan sensor</b> dan (mode Auto) <b>cek aktuator</b> — sama dengan pengaturan di bawah.
+    </p>
+    <div class="row"><span class="label">Interval pengukuran</span><span class="value ok" id="relay_interval">-</span></div>
     <div style="margin-top:12px;">
-      <b style="color:#e94560; font-size:13px;">⏱ Ubah Interval Cek</b>
+      <b style="color:#e94560; font-size:13px;">⏱ Ubah interval pengukuran</b>
       <div class="form-group" style="margin-bottom:0;">
         <label>Interval (detik)</label>
         <input type="text" inputmode="numeric" id="relay_interval_input" autocomplete="off"
@@ -277,6 +280,8 @@
     let relayIntervalEditing = false;
     let manualMoveEditing = false;
     let currentActY = 0;
+    /** Selaras dengan interval pembacaan sensor di device (ms); dipakai untuk polling /data */
+    let dataPollMs = 5000;
 
     function applyModeUi(isAuto) {
       const segM = document.getElementById('seg_manual');
@@ -319,7 +324,7 @@
     }
 
     function fetchData() {
-      fetch('/data')
+      return fetch('/data')
         .then(r => r.json())
         .then(d => {
           document.getElementById('wifi_card').style.display = 'none';
@@ -372,6 +377,7 @@
           if (!manualMoveEditing) updateManualMoveHint();
 
           const ms = d.relay_interval_ms;
+          dataPollMs = Math.min(120000, Math.max(2000, ms || 5000));
           document.getElementById('relay_interval').textContent = formatIntervalMs(ms);
           if (!relayIntervalEditing)
             document.getElementById('relay_interval_input').value = Math.round(ms / 1000);
@@ -465,6 +471,7 @@
         .then(d => {
           hideLoading();
           const applied = d.interval_ms;
+          dataPollMs = Math.min(120000, Math.max(2000, applied || 5000));
           document.getElementById('relay_interval_input').value = Math.round(applied / 1000);
           document.getElementById('relay_interval').textContent = formatIntervalMs(applied);
           showIntervalAlert(true, '✅ Interval: ' + formatIntervalMs(applied));
@@ -608,8 +615,14 @@
         .catch(() => {});
     }
 
-    fetchData();
-    setInterval(fetchData, 5000);
+    function scheduleFetchData() {
+      fetchData()
+        .catch(() => {})
+        .finally(() => {
+          setTimeout(scheduleFetchData, dataPollMs);
+        });
+    }
+    scheduleFetchData();
     refreshClock();
     setInterval(refreshClock, 1000);
     fetchLogInfo();

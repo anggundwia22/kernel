@@ -112,7 +112,8 @@ struct ActuatorControl
 struct SystemSettings
 {
     unsigned long lastLogTime     = 0;
-    unsigned long lastRelayCheck  = 0;
+    /** Waktu terakhir pembacaan sensor + (mode auto) cek aktuator; pakai relayCheckMs. */
+    unsigned long lastMeasurementMs = 0;
     unsigned long lastWifiCheck   = 0;
     bool          firstLogDone    = false;
     /** RH terklamp [hMin,hMax] dari siklus pemeriksaan sebelumnya (mode auto). */
@@ -908,7 +909,7 @@ void setupWebServer()
         if (server.hasArg("auto")) {
             config.modeAuto = (server.arg("auto").toInt() != 0);
             if (config.modeAuto)
-                sysSettings.lastRelayCheck = millis();
+                sysSettings.lastMeasurementMs = millis();
             saveConfig();
             Serial.printf("[MODE] Kontrol %s\n", config.modeAuto ? "AUTO" : "MANUAL");
         }
@@ -974,6 +975,10 @@ void setupWebServer()
         if (server.hasArg("t2")) config.temp2Offset = server.arg("t2").toFloat();
         if (server.hasArg("h2")) config.hum2Offset  = server.arg("h2").toFloat();
         bool saved = saveConfig();
+        if (saved) {
+            readDHT();
+            sensorData.timestamp = getTimestamp();
+        }
         Serial.printf("[CAL] Offset baru → T1:%.1f H1:%.1f T2:%.1f H2:%.1f\n",
                       config.temp1Offset, config.hum1Offset,
                       config.temp2Offset, config.hum2Offset);
@@ -1213,13 +1218,12 @@ void loop()
         checkWiFi();
     }
 
-    // Baca sensor & update timestamp
-    readDHT();
-    sensorData.timestamp = getTimestamp();
-
-    // --- Interval "cek relay" (umum): sama untuk semua mode; isi tick tergantung mode ---
-    if (nowMs - sysSettings.lastRelayCheck >= config.relayCheckMs) {
-        sysSettings.lastRelayCheck = nowMs;
+    // --- Pembacaan sensor + (auto) cek aktuator pada interval yang sama (relayCheckMs) ---
+    if (sysSettings.lastMeasurementMs == 0ULL
+        || nowMs - sysSettings.lastMeasurementMs >= config.relayCheckMs) {
+        sysSettings.lastMeasurementMs = nowMs;
+        readDHT();
+        sensorData.timestamp = getTimestamp();
         if (config.modeAuto)
             updateActuatorFromHumidity();
     }
@@ -1259,11 +1263,5 @@ void loop()
         }
     }
 
-    // Non-blocking delay — tetap layani aktuator & web selama jeda
-    unsigned long waitUntil = millis() + 5000;
-    while (millis() < waitUntil) {
-        actuatorService();
-        if (sysStatus.webServerOn) server.handleClient();
-        delay(10);
-    }
+    delay(10);
 }
