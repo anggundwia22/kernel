@@ -38,8 +38,6 @@ DHT         dht2(DHT_PIN_2, DHT_TYPE);
 RTC_DS3231  rtc;
 WebServer   server(80);
 
-float lastHumidity = NAN;
-
 // ========== WIFI / NTP CONFIGURATION ==========
 struct WiFiConfig
 {
@@ -489,6 +487,75 @@ bool closeValve(float cmRequested)
 // H untuk rumus = RH sekarang diklamp ke [hMin, hMax] (nilai > hMax diperlakukan sebagai hMax).
 // k = maxDurS / hMax,  x = -((H*k) - (hTemporer*k)). Tanda x: x>0 → buka ke yMax, x<0 → tutup ke yMin.
 // Durasi gerak = |x| (maks maxDurS). Manual & auto: stroke min = yMin (tutup), stroke maks = yMax (buka).
+// void updateActuatorFromHumidity()
+// {
+//     if (actuatorIsBusy()) return;
+
+//     float H = sensorData.hum1;
+//     if (isnan(H)) {
+//         Serial.println("[ACT-AUTO] RH tidak valid, lewati");
+//         return;
+//     }
+
+//     const float hMin    = config.hMin;
+//     const float hMax    = config.hMax;
+//     const float yMax    = config.yMax;
+//     const float yMin    = config.yMin;
+//     const float maxDurS = config.maxDurS;
+
+//     if (maxDurS <= 0.0f || hMax <= hMin || yMax <= yMin + 0.01f) {
+//         Serial.println("[ACT-AUTO] Parameter auto tidak valid, lewati");
+//         return;
+//     }
+
+//     float Hc = fminf(fmaxf(H, hMin), hMax);
+
+//     if (isnan(sysSettings.hTemporer)) {
+//         sysSettings.hTemporer = Hc;
+//         Serial.printf("[ACT-AUTO] Init hTemporer=%.2f%%\n", Hc);
+//         return;
+//     }
+
+//     float hPrev = sysSettings.hTemporer;
+//     float k     = maxDurS / hMax;
+//     // H dalam rumus = RH sekarang setelah klamp [hMin,hMax] (sama seperti nilai disimpan di hTemporer).
+//     float x     = -1.0f * ((Hc * k) - (hPrev * k));
+
+//     const float rhEps = 0.08f;
+//     if (fabsf(Hc - hPrev) < rhEps) {
+//         sysSettings.hTemporer = Hc;
+//         return;
+//     }
+
+//     int8_t dir = 0;
+//     if (x > 0.0f)      dir = 1;
+//     else if (x < 0.0f) dir = -1;
+//     else {
+//         sysSettings.hTemporer = Hc;
+//         return;
+//     }
+
+//     float durS = fabsf(x);
+//     if (durS > maxDurS) durS = maxDurS;
+//     unsigned long ms = (unsigned long)(durS * 1000.0f + 0.5f);
+//     if (ms < 80) {
+//         sysSettings.hTemporer = Hc;
+//         return;
+//     }
+
+//     float yTgt = (dir > 0) ? yMax : yMin;
+//     actuator.yTarget = yTgt;
+//     Serial.printf("[ACT-AUTO] H=%.2f%% (pakai %.2f%%) hTemporer=%.2f%% k=%.4f x=%.4f dur=%.2fs -> %s target=%.2f cm\n",
+//                   H, Hc, hPrev, k, x, durS, dir > 0 ? "OPEN" : "CLOSE", yTgt);
+
+//     if (!startActuatorMove(dir, ms, yTgt)) {
+//         Serial.println("[ACT-AUTO] Gerak ditolak (masih sibuk)");
+//         return;
+//     }
+//     sysSettings.hTemporer = Hc;
+//     if (sysStatus.littleFsOk) writeLog("AUTO_MOVE");
+// }
+
 void updateActuatorFromHumidity()
 {
     if (actuatorIsBusy()) return;
@@ -510,32 +577,23 @@ void updateActuatorFromHumidity()
         return;
     }
 
+    // Clamp RH
     float Hc = fminf(fmaxf(H, hMin), hMax);
 
-    // if (isnan(sysSettings.hTemporer)) {
-    //     sysSettings.hTemporer = Hc;
-    //     Serial.printf("[ACT-AUTO] Init hTemporer=%.2f%%\n", Hc);
-    //     return;
-    // }
-
+    // Init pertama
     if (isnan(sysSettings.hTemporer)) {
-
-        if (!isnan(lastHumidity)) {
-            sysSettings.hTemporer = fminf(fmaxf(lastHumidity, hMin), hMax);
-            Serial.printf("[ACT-AUTO] Init dari lastHumidity=%.2f%%\n", lastHumidity);
-        } else {
-            sysSettings.hTemporer = Hc;
-            Serial.printf("[ACT-AUTO] Init fallback Hc=%.2f%%\n", Hc);
-        }
-    
+        sysSettings.hTemporer = Hc;
+        Serial.printf("[ACT-AUTO] Init hTemporer=%.2f%%\n", Hc);
         return;
     }
 
     float hPrev = sysSettings.hTemporer;
-    float k     = maxDurS / hMax;
-    // H dalam rumus = RH sekarang setelah klamp [hMin,hMax] (sama seperti nilai disimpan di hTemporer).
-    float x     = -1.0f * ((Hc * k) - (hPrev * k));
 
+    // 🔥 PERBAIKAN DI SINI
+    float k = maxDurS / hMax;
+    float x = (hPrev - Hc) * k;
+
+    // Deadband biar tidak jitter
     const float rhEps = 0.08f;
     if (fabsf(Hc - hPrev) < rhEps) {
         sysSettings.hTemporer = Hc;
@@ -543,8 +601,8 @@ void updateActuatorFromHumidity()
     }
 
     int8_t dir = 0;
-    if (x > 0.0f)      dir = 1;
-    else if (x < 0.0f) dir = -1;
+    if (x > 0.0f)      dir = 1;   // buka
+    else if (x < 0.0f) dir = -1;  // tutup
     else {
         sysSettings.hTemporer = Hc;
         return;
@@ -552,7 +610,9 @@ void updateActuatorFromHumidity()
 
     float durS = fabsf(x);
     if (durS > maxDurS) durS = maxDurS;
+
     unsigned long ms = (unsigned long)(durS * 1000.0f + 0.5f);
+
     if (ms < 80) {
         sysSettings.hTemporer = Hc;
         return;
@@ -560,14 +620,19 @@ void updateActuatorFromHumidity()
 
     float yTgt = (dir > 0) ? yMax : yMin;
     actuator.yTarget = yTgt;
-    Serial.printf("[ACT-AUTO] H=%.2f%% (pakai %.2f%%) hTemporer=%.2f%% k=%.4f x=%.4f dur=%.2fs -> %s target=%.2f cm\n",
-                  H, Hc, hPrev, k, x, durS, dir > 0 ? "OPEN" : "CLOSE", yTgt);
+
+    Serial.printf(
+        "[ACT-AUTO] H=%.2f -> %.2f | prev=%.2f | x=%.4f | dur=%.2fs | %s\n",
+        H, Hc, hPrev, x, durS, dir > 0 ? "OPEN" : "CLOSE"
+    );
 
     if (!startActuatorMove(dir, ms, yTgt)) {
         Serial.println("[ACT-AUTO] Gerak ditolak (masih sibuk)");
         return;
     }
+
     sysSettings.hTemporer = Hc;
+
     if (sysStatus.littleFsOk) writeLog("AUTO_MOVE");
 }
 
@@ -590,9 +655,6 @@ void readDHT()
 
     sensorData.temp1 = applyCalibration(sensorData.rawTemp1, config.temp1Offset);
     sensorData.hum1  = applyCalibration(sensorData.rawHum1,  config.hum1Offset);
-    if (!isnan(sensorData.hum1)) {
-        lastHumidity = sensorData.hum1;
-    }
     sensorData.temp2 = applyCalibration(sensorData.rawTemp2, config.temp2Offset);
     sensorData.hum2  = applyCalibration(sensorData.rawHum2,  config.hum2Offset);
 }
