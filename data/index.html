@@ -272,6 +272,10 @@
       <button class="btn" onclick="setLogInterval()">Simpan interval log</button>
     </div>
     <div id="log_interval_alert" class="alert"></div>
+    <hr class="divider">
+    <button type="button" class="btn" style="background:#3d2a1a; color:#f5a623;"
+      onclick="restartSystem()">↻ Restart sistem</button>
+    <div id="restart_alert" class="alert"></div>
   </div>
 
   <p class="timestamp" id="ts">Update terakhir: -</p>
@@ -485,6 +489,29 @@
       el.className = 'alert ' + (ok ? 'success' : 'error');
       el.textContent = text;
       setTimeout(() => { el.style.display = 'none'; }, timeoutMs);
+    }
+
+    function restartSystem() {
+      if (!confirm('Restart ESP32? Sambungan akan terputus beberapa detik.')) return;
+      showLoading('Merestart perangkat…');
+      fetch('/system/restart')
+        .then(r => r.json().then(d => ({ ok: r.ok, d })))
+        .then(({ ok, d }) => {
+          if (ok && d.success) {
+            document.getElementById('loading_text').textContent = 'Menunggu perangkat…';
+            setTimeout(() => {
+              hideLoading();
+              showAlert('restart_alert', true, '✅ Jika halaman tidak hidup lagi, muat ulang atau sambungkan ulang Wi‑Fi.', 8000);
+            }, 2500);
+          } else {
+            hideLoading();
+            showAlert('restart_alert', false, '❌ ' + (d.error || 'Gagal restart'), 5000);
+          }
+        })
+        .catch(() => {
+          hideLoading();
+          showAlert('restart_alert', true, '✅ Perintah terkirim — muat ulang halaman setelah ~10 detik.', 6000);
+        });
     }
 
     function syncRtcFromBrowser() {

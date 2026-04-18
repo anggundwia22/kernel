@@ -166,8 +166,8 @@ void setupWiFi();
 
 // --- Log / LittleFS ---
 bool initLittleFS();
-bool writeLog(String event = "SCHEDULED");
-bool writeLogManual(float yBefore, float yInput);
+bool writeLog(String event = "SCHEDULED", const char* dir = nullptr);
+bool writeLogManual(float yBefore, float yInput, int8_t dir);
 void clearLog();
 int  countLogEntries();
 
@@ -443,7 +443,7 @@ bool manualValveOn(float pd)
 
     Serial.printf("[ACT] ON  PD=%.2f cm  Y=%.2f  x=%.4f  dur=%.2f s  %s\n",
                   pdc, y, x, durS, dir > 0 ? "OPEN" : "CLOSE");
-    if (sysStatus.littleFsOk) writeLogManual(yLogBefore, pdc);
+    if (sysStatus.littleFsOk) writeLogManual(yLogBefore, pdc, dir);
     return true;
 }
 
@@ -461,7 +461,7 @@ bool openValve(float cmRequested)
     if (!startActuatorMove(1, ms, actuator.yCurrent + cm)) return false;
 
     Serial.printf("[ACT] Manual BUKA %.2f cm → %lu ms (%.3f cm/s)\n", cm, ms, spd);
-    if (sysStatus.littleFsOk) writeLog("VALVE_OPEN");
+    if (sysStatus.littleFsOk) writeLog("VALVE_OPEN", "buka");
     return true;
 }
 
@@ -479,7 +479,7 @@ bool closeValve(float cmRequested)
     if (!startActuatorMove(-1, ms, actuator.yCurrent - cm)) return false;
 
     Serial.printf("[ACT] Manual TUTUP %.2f cm → %lu ms (%.3f cm/s)\n", cm, ms, spd);
-    if (sysStatus.littleFsOk) writeLog("VALVE_CLOSE");
+    if (sysStatus.littleFsOk) writeLog("VALVE_CLOSE", "tutup");
     return true;
 }
 
@@ -634,7 +634,8 @@ void updateActuatorFromHumidity()
 
     sysSettings.hTemporer = Hc;
 
-    if (sysStatus.littleFsOk) writeLog("AUTO_MOVE");
+    if (sysStatus.littleFsOk)
+        writeLog("AUTO_MOVE", dir > 0 ? "buka" : "tutup");
 }
 
 // ============================================================
@@ -758,8 +759,8 @@ bool initLittleFS()
     return true;
 }
 
-/** Tulis log JSON ke LittleFS. */
-bool writeLog(String event)
+/** Tulis log JSON ke LittleFS. `dir` = "buka" | "tutup" untuk gerak aktuator; nullptr jika tidak berlaku. */
+bool writeLog(String event, const char* dir)
 {
     File file = LittleFS.open(LOG_FILE, FILE_APPEND);
     if (!file) {
@@ -769,6 +770,8 @@ bool writeLog(String event)
     JsonDocument doc;
     doc["Time"]   = sensorData.timestamp;
     doc["Event"]  = event;
+    if (dir != nullptr)
+        doc["dir"] = dir;
     doc["T1"]     = serialized(String(sensorData.temp1, 2));
     doc["H1"]     = serialized(String(sensorData.hum1, 2));
     doc["T2"]     = serialized(String(sensorData.temp2, 2));
@@ -784,8 +787,8 @@ bool writeLog(String event)
     return true;
 }
 
-/** Log manual ON: posisi sebelum & input target (cm). */
-bool writeLogManual(float yBefore, float yInput)
+/** Log manual ON: posisi sebelum & input target (cm), plus arah buka/tutup. */
+bool writeLogManual(float yBefore, float yInput, int8_t dir)
 {
     File file = LittleFS.open(LOG_FILE, FILE_APPEND);
     if (!file) {
@@ -795,6 +798,7 @@ bool writeLogManual(float yBefore, float yInput)
     JsonDocument doc;
     doc["Time"]      = sensorData.timestamp;
     doc["Event"]     = "MANUAL_ON";
+    doc["dir"]       = (dir > 0) ? "buka" : "tutup";
     doc["T1"]        = serialized(String(sensorData.temp1, 2));
     doc["H1"]        = serialized(String(sensorData.hum1, 2));
     doc["T2"]        = serialized(String(sensorData.temp2, 2));
@@ -1132,6 +1136,18 @@ void setupWebServer()
         String json;
         serializeJson(doc, json);
         server.send(200, "application/json", json);
+    });
+
+    server.on("/system/restart", HTTP_GET, []() {
+        if (actuatorIsBusy()) {
+            server.send(409, "application/json",
+                         "{\"success\":false,\"error\":\"Aktuator sedang bergerak\"}");
+            return;
+        }
+        Serial.println("[WEB] Restart sistem diminta");
+        server.send(200, "application/json", "{\"success\":true}");
+        delay(200);
+        ESP.restart();
     });
 
     server.on("/favicon.ico", HTTP_GET, []() {
