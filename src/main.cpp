@@ -25,7 +25,7 @@
 #define CONFIG_FILE             "/config.json"
 #define LOG_FILE                "/silo_log.json"
 #define LOG_INTERVAL_DEFAULT_MS 3600000UL   // 1 jam
-#define RELAY_CHECK_DEFAULT_MS  300000UL    // 5 menit
+#define RELAY_CHECK_DEFAULT_MS  3600000UL   // 1 jam
 #define WIFI_CHECK_INTERVAL     5000UL
 #define WIFI_TIMEOUT            15
 
@@ -37,6 +37,8 @@ DHT         dht1(DHT_PIN_1, DHT_TYPE);
 DHT         dht2(DHT_PIN_2, DHT_TYPE);
 RTC_DS3231  rtc;
 WebServer   server(80);
+
+float lastHumidity = NAN;
 
 // ========== WIFI / NTP CONFIGURATION ==========
 struct WiFiConfig
@@ -72,7 +74,6 @@ struct Config
     float hMin       = 0.0f;
     float hMax       = 10.0f;
     float yMin       = 0.0f;
-    float yPreset    = 10.0f;
     float yMax       = 30.0f;
     float speedCmS   = 1.724f;
     float maxDurS    = 11.6f;
@@ -82,6 +83,8 @@ struct Config
     // System settings
     unsigned long logIntervalMs  = LOG_INTERVAL_DEFAULT_MS;
     unsigned long relayCheckMs   = RELAY_CHECK_DEFAULT_MS;
+    /** true = kontrol stem dari RH otomatis; false = hanya manual dari web */
+    bool          modeAuto       = true;
 } config;
 
 // ========== ACTUATOR STATE ==========
@@ -114,8 +117,8 @@ struct SystemSettings
     unsigned long lastRelayCheck  = 0;
     unsigned long lastWifiCheck   = 0;
     bool          firstLogDone    = false;
-    bool          hasLastAutoRh   = false;
-    float         lastAutoRh      = NAN;
+    /** RH terklamp [hMin,hMax] dari siklus pemeriksaan sebelumnya (mode auto). */
+    float         hTemporer       = NAN;
 } sysSettings;
 
 // ========== SYSTEM STATUS ==========
@@ -203,6 +206,7 @@ void createDefaultConfig()
     // System
     doc["logIntervalMs"]  = config.logIntervalMs;
     doc["relayCheckMs"]   = config.relayCheckMs;
+    doc["modeAuto"]       = config.modeAuto;
     serializeJson(doc, file);
     file.close();
     Serial.println("[Config] Default config dibuat.");
@@ -240,6 +244,8 @@ bool loadConfig()
     // System
     config.logIntervalMs = doc["logIntervalMs"] | config.logIntervalMs;
     config.relayCheckMs  = doc["relayCheckMs"]  | config.relayCheckMs;
+    if (doc["modeAuto"].is<bool>())
+        config.modeAuto = doc["modeAuto"].as<bool>();
 
     // Validasi dan clamp actuator
     if (config.hMax <= config.hMin) config.hMax = config.hMin + 0.1f;
@@ -269,6 +275,7 @@ bool loadConfig()
 
 bool saveConfig()
 {
+    if (!sysStatus.littleFsOk) return false;
     File file = LittleFS.open(CONFIG_FILE, FILE_WRITE);
     if (!file) {
         Serial.println("[Config] ERROR: Gagal buka file config untuk disimpan!");
@@ -290,6 +297,7 @@ bool saveConfig()
     doc["yCurrent"]    = config.yCurrent;
     doc["logIntervalMs"]  = config.logIntervalMs;
     doc["relayCheckMs"]   = config.relayCheckMs;
+    doc["modeAuto"]       = config.modeAuto;
     serializeJson(doc, file);
     file.close();
     Serial.println("[Config] Konfigurasi disimpan ke LittleFS.");
@@ -476,10 +484,11 @@ bool closeValve(float cmRequested)
     return true;
 }
 
-// --- MODE AUTO (simple) ---
-// H < 10  -> buka selama maxDurS
-// H > 10  -> tutup selama maxDurS
-// H = 10  -> diam
+// --- MODE AUTO (RH → aktuator, analog dengan rumus manual) ---
+// hTemporer = RH siklus lalu, diklamp ke [hMin, hMax] (nilai > hMax disimpan sebagai hMax).
+// H untuk rumus = RH sekarang diklamp ke [hMin, hMax] (nilai > hMax diperlakukan sebagai hMax).
+// k = maxDurS / hMax,  x = -((H*k) - (hTemporer*k)). Tanda x: x>0 → buka ke yMax, x<0 → tutup ke yMin.
+// Durasi gerak = |x| (maks maxDurS). Manual & auto: stroke min = yMin (tutup), stroke maks = yMax (buka).
 void updateActuatorFromHumidity()
 {
     if (actuatorIsBusy()) return;
@@ -490,39 +499,75 @@ void updateActuatorFromHumidity()
         return;
     }
 
+    const float hMin    = config.hMin;
+    const float hMax    = config.hMax;
     const float yPreset = config.yPreset;
-    const float yMax = config.yMax;
+    const float yMax    = config.yMax;
     const float maxDurS = config.maxDurS;
-    const float RH_THRESHOLD = 10.0f;
 
-    if (maxDurS <= 0.0f || yMax <= yPreset) {
+    if (maxDurS <= 0.0f || hMax <= hMin || yMax <= yMin + 0.01f) {
         Serial.println("[ACT-AUTO] Parameter auto tidak valid, lewati");
         return;
     }
 
-    int8_t dir = 0;
-    if (H < RH_THRESHOLD) dir = 1;       // buka
-    else if (H > RH_THRESHOLD) dir = -1; // tutup
-    else dir = 0;
+    float Hc = fminf(fmaxf(H, hMin), hMax);
 
-    if (dir == 0) {
-        Serial.printf("[ACT-AUTO] RH baru=%.2f (tepat %.2f) -> diam\n", H, RH_THRESHOLD);
+    // if (isnan(sysSettings.hTemporer)) {
+    //     sysSettings.hTemporer = Hc;
+    //     Serial.printf("[ACT-AUTO] Init hTemporer=%.2f%%\n", Hc);
+    //     return;
+    // }
+
+    if (isnan(sysSettings.hTemporer)) {
+
+        if (!isnan(lastHumidity)) {
+            sysSettings.hTemporer = fminf(fmaxf(lastHumidity, hMin), hMax);
+            Serial.printf("[ACT-AUTO] Init dari lastHumidity=%.2f%%\n", lastHumidity);
+        } else {
+            sysSettings.hTemporer = Hc;
+            Serial.printf("[ACT-AUTO] Init fallback Hc=%.2f%%\n", Hc);
+        }
+    
         return;
     }
 
-    const float durS = maxDurS;
-    const unsigned long ms = (unsigned long)(durS * 1000.0f + 0.5f);
+    float hPrev = sysSettings.hTemporer;
+    float k     = maxDurS / hMax;
+    // H dalam rumus = RH sekarang setelah klamp [hMin,hMax] (sama seperti nilai disimpan di hTemporer).
+    float x     = -1.0f * ((Hc * k) - (hPrev * k));
 
-    float yTgt = (dir > 0) ? yMax : yPreset;
+    const float rhEps = 0.08f;
+    if (fabsf(Hc - hPrev) < rhEps) {
+        sysSettings.hTemporer = Hc;
+        return;
+    }
 
+    int8_t dir = 0;
+    if (x > 0.0f)      dir = 1;
+    else if (x < 0.0f) dir = -1;
+    else {
+        sysSettings.hTemporer = Hc;
+        return;
+    }
+
+    float durS = fabsf(x);
+    if (durS > maxDurS) durS = maxDurS;
+    unsigned long ms = (unsigned long)(durS * 1000.0f + 0.5f);
+    if (ms < 80) {
+        sysSettings.hTemporer = Hc;
+        return;
+    }
+
+    float yTgt = (dir > 0) ? yMax : yMin;
     actuator.yTarget = yTgt;
-    Serial.printf("[ACT-AUTO] RH=%.2f -> %s selama %.2f s (target %.2f cm)\n",
-                  H, dir > 0 ? "OPEN" : "CLOSE", durS, yTgt);
+    Serial.printf("[ACT-AUTO] H=%.2f%% (pakai %.2f%%) hTemporer=%.2f%% k=%.4f x=%.4f dur=%.2fs -> %s target=%.2f cm\n",
+                  H, Hc, hPrev, k, x, durS, dir > 0 ? "OPEN" : "CLOSE", yTgt);
 
     if (!startActuatorMove(dir, ms, yTgt)) {
         Serial.println("[ACT-AUTO] Gerak ditolak (masih sibuk)");
         return;
     }
+    sysSettings.hTemporer = Hc;
     if (sysStatus.littleFsOk) writeLog("AUTO_MOVE");
 }
 
@@ -545,12 +590,17 @@ void readDHT()
 
     sensorData.temp1 = applyCalibration(sensorData.rawTemp1, config.temp1Offset);
     sensorData.hum1  = applyCalibration(sensorData.rawHum1,  config.hum1Offset);
+    if (!isnan(sensorData.hum1)) {
+        lastHumidity = sensorData.hum1;
+    }
     sensorData.temp2 = applyCalibration(sensorData.rawTemp2, config.temp2Offset);
     sensorData.hum2  = applyCalibration(sensorData.rawHum2,  config.hum2Offset);
 }
 
 String getTimestamp()
 {
+    if (!sysStatus.rtcOk)
+        return String("RTC tidak tersedia");
     DateTime now = rtc.now();
     char buf[20];
     snprintf(buf, sizeof(buf), "%04d-%02d-%02d %02d:%02d:%02d",
@@ -576,6 +626,7 @@ bool connectWiFi()
 
 bool setRtcFromYmdHms(int y, int mo, int d, int h, int mi, int s)
 {
+    if (!sysStatus.rtcOk) return false;
     if (y < 2020 || mo < 1 || mo > 12 || d < 1 || d > 31 ||
         h < 0 || h > 23 || mi < 0 || mi > 59 || s < 0 || s > 59)
         return false;
@@ -605,8 +656,9 @@ void initRTC()
 {
     Wire.begin();
     if (!rtc.begin()) {
-        Serial.println("[RTC] ERROR: tidak ditemukan!");
-        while (1) delay(100);
+        sysStatus.rtcOk = false;
+        Serial.println("[RTC] Modul tidak terpasang / tidak ditemukan — lanjut tanpa RTC.");
+        return;
     }
     if (rtc.lostPower()) {
         rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
@@ -761,6 +813,10 @@ void setupWebServer()
         doc["act_h_max"]          = config.hMax;
         doc["act_y_min"]          = config.yMin;
         doc["act_y_max"]          = config.yMax;
+        if (isnan(sysSettings.hTemporer))
+            doc["act_h_temporer"] = "-";
+        else
+            doc["act_h_temporer"] = serialized(String(sysSettings.hTemporer, 2));
         doc["act_speed"]          = config.speedCmS;
         doc["act_max_dur"]        = config.maxDurS;
         doc["act_y_cur"]          = serialized(String(actuator.yCurrent,  2));
@@ -771,6 +827,32 @@ void setupWebServer()
         doc["pt_cm"]              = config.ptTotalCm;
         doc["dt_s"]               = config.dtTotalS;
         doc["man_speed"]          = serialized(String(manualOpenCloseSpeedCmS(), 3));
+        doc["mode_auto"]          = config.modeAuto;
+        String json;
+        serializeJson(doc, json);
+        server.send(200, "application/json", json);
+    });
+
+    /** Waktu RTC saja — ringan untuk polling 1 Hz di UI */
+    server.on("/time", HTTP_GET, []() {
+        JsonDocument doc;
+        doc["rtc_now"] = getTimestamp();
+        String json;
+        serializeJson(doc, json);
+        server.send(200, "application/json", json);
+    });
+
+    server.on("/control/mode", HTTP_GET, []() {
+        if (server.hasArg("auto")) {
+            config.modeAuto = (server.arg("auto").toInt() != 0);
+            if (config.modeAuto)
+                sysSettings.lastRelayCheck = millis();
+            saveConfig();
+            Serial.printf("[MODE] Kontrol %s\n", config.modeAuto ? "AUTO" : "MANUAL");
+        }
+        JsonDocument doc;
+        doc["success"]   = true;
+        doc["mode_auto"] = config.modeAuto;
         String json;
         serializeJson(doc, json);
         server.send(200, "application/json", json);
@@ -841,6 +923,10 @@ void setupWebServer()
             server.send(409, "application/json", "{\"success\":false,\"error\":\"Aktuator sedang bergerak\"}");
             return;
         }
+        if (config.modeAuto) {
+            server.send(409, "application/json", "{\"success\":false,\"error\":\"Pilih mode Manual untuk kontrol valve\"}");
+            return;
+        }
         if (!server.hasArg("pd")) {
             server.send(400, "application/json", "{\"success\":false,\"error\":\"Parameter pd (cm) wajib\"}");
             return;
@@ -863,6 +949,10 @@ void setupWebServer()
             server.send(409, "application/json", "{\"success\":false,\"error\":\"Aktuator sedang bergerak\"}");
             return;
         }
+        if (config.modeAuto) {
+            server.send(409, "application/json", "{\"success\":false,\"error\":\"Pilih mode Manual untuk kontrol valve\"}");
+            return;
+        }
         float cmReq = server.hasArg("cm") ? server.arg("cm").toFloat() : -1.0f;
         if (!openValve(cmReq)) {
             server.send(400, "application/json", "{\"success\":false,\"error\":\"Sudah di posisi maks\"}");
@@ -874,6 +964,10 @@ void setupWebServer()
     server.on("/valve/close", HTTP_GET, []() {
         if (actuatorIsBusy()) {
             server.send(409, "application/json", "{\"success\":false,\"error\":\"Aktuator sedang bergerak\"}");
+            return;
+        }
+        if (config.modeAuto) {
+            server.send(409, "application/json", "{\"success\":false,\"error\":\"Pilih mode Manual untuk kontrol valve\"}");
             return;
         }
         float cmReq = server.hasArg("cm") ? server.arg("cm").toFloat() : -1.0f;
@@ -997,13 +1091,7 @@ void setup()
     Serial.println("  Kernel Silo Monitor + WebUI");
     Serial.println("================================");
 
-    // --- DHT ---
-    dht1.begin();
-    Serial.println("[DHT21-1] Initialized GPIO 4");
-    dht2.begin();
-    Serial.println("[DHT21-2] Initialized GPIO 15");
-
-    // --- Relay & LED ---
+    // --- Relay & LED (GPIO aman tanpa sensor eksternal) ---
     pinMode(RELAY_OPEN_PLUS_PIN,   OUTPUT);
     pinMode(RELAY_OPEN_MINUS_PIN,  OUTPUT);
     pinMode(RELAY_CLOSE_PLUS_PIN,  OUTPUT);
@@ -1014,23 +1102,33 @@ void setup()
     Serial.println("[RELAY] Open 27/26, Close 25/33 (active-low)");
     Serial.println("[LED] Initialized GPIO 32");
 
-    // --- RTC ---
-    initRTC();
-
-    // --- LittleFS & Config ---
+    // --- LittleFS & Config (tanpa blokir WiFi jika gagal) ---
     sysStatus.littleFsOk = initLittleFS();
     if (!loadConfig()) {
-        Serial.println("[Config] Menggunakan konfigurasi default.");
-        createDefaultConfig();
-        loadConfig();
+        Serial.println("[Config] File tidak ada atau gagal baca.");
+        if (sysStatus.littleFsOk) {
+            Serial.println("[Config] Buat default di LittleFS.");
+            createDefaultConfig();
+            loadConfig();
+        } else {
+            Serial.println("[Config] Tanpa LittleFS — pakai nilai default di RAM.");
+        }
     }
-    updateValveStatusFromPosition();
 
-    // --- WiFi AP + STA ---
+    // --- WiFi AP + Web (sebelum RTC/DHT agar hotspot tetap muncul tanpa modul opsional) ---
     setupWiFi();
-
-    // --- Web Server ---
     setupWebServer();
+
+    // --- RTC (opsional — tidak memblokir boot) ---
+    initRTC();
+
+    // --- DHT (opsional; begin() tidak menunggu sensor fisik) ---
+    dht1.begin();
+    Serial.println("[DHT21-1] Initialized GPIO 4");
+    dht2.begin();
+    Serial.println("[DHT21-2] Initialized GPIO 15");
+
+    updateValveStatusFromPosition();
 
     Serial.println("[SYSTEM] Setup selesai!\n");
     delay(1000);
@@ -1057,10 +1155,11 @@ void loop()
     readDHT();
     sensorData.timestamp = getTimestamp();
 
-    // --- Mode auto (RH → aktuator) ---
+    // --- Interval "cek relay" (umum): sama untuk semua mode; isi tick tergantung mode ---
     if (nowMs - sysSettings.lastRelayCheck >= config.relayCheckMs) {
         sysSettings.lastRelayCheck = nowMs;
-        updateActuatorFromHumidity();
+        if (config.modeAuto)
+            updateActuatorFromHumidity();
     }
 
     // --- Log LittleFS ---
