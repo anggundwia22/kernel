@@ -6,6 +6,7 @@
 #include <WebServer.h>
 #include <ArduinoJson.h>
 #include <LittleFS.h>
+#include <cmath>
 
 // ========== PIN CONFIGURATION ==========
 #define DHT_PIN_1               4
@@ -557,11 +558,28 @@ bool closeValve(float cmRequested)
 //     if (sysStatus.littleFsOk) writeLog("AUTO_MOVE");
 // }
 
+/** RH terkalibrasi dipakai sebagai % bulat — satu sumber dengan UI web, log LittleFS, dan kontrol auto. */
+static float rhWholePercent(float calibratedRh)
+{
+    if (isnan(calibratedRh)) return calibratedRh;
+    return static_cast<float>(std::lroundf(calibratedRh));
+}
+
+static void printSensorSerial(int idx, float rawT, float calT, float rawH, float calH)
+{
+    if (isnan(calH))
+        Serial.printf("[S%d] Temp: %.2f→%.2f°C  RH: %.2f→nan%%\n",
+                      idx, rawT, calT, rawH);
+    else
+        Serial.printf("[S%d] Temp: %.2f→%.2f°C  RH: %.2f→%d%%\n",
+                      idx, rawT, calT, rawH, static_cast<int>(rhWholePercent(calH)));
+}
+
 void updateActuatorFromHumidity()
 {
     if (actuatorIsBusy()) return;
 
-    float H = sensorData.hum1;
+    float H = rhWholePercent(sensorData.hum1);
     if (isnan(H)) {
         Serial.println("[ACT-AUTO] RH tidak valid, lewati");
         return;
@@ -584,7 +602,7 @@ void updateActuatorFromHumidity()
     // Init pertama
     if (isnan(sysSettings.hTemporer)) {
         sysSettings.hTemporer = Hc;
-        Serial.printf("[ACT-AUTO] Init hTemporer=%.2f%%\n", Hc);
+        Serial.printf("[ACT-AUTO] Init hTemporer=%.0f%%\n", Hc);
         return;
     }
 
@@ -623,7 +641,7 @@ void updateActuatorFromHumidity()
     actuator.yTarget = yTgt;
 
     Serial.printf(
-        "[ACT-AUTO] H=%.2f -> %.2f | prev=%.2f | x=%.4f | dur=%.2fs | %s\n",
+        "[ACT-AUTO] H=%.0f -> %.0f | prev=%.0f | x=%.4f | dur=%.2fs | %s\n",
         H, Hc, hPrev, x, durS, dir > 0 ? "OPEN" : "CLOSE"
     );
 
@@ -773,9 +791,9 @@ bool writeLog(String event, const char* dir)
     if (dir != nullptr)
         doc["dir"] = dir;
     doc["T1"]     = serialized(String(sensorData.temp1, 2));
-    doc["H1"]     = serialized(String(sensorData.hum1, 2));
+    doc["H1"]     = serialized(isnan(sensorData.hum1) ? String("-") : String(static_cast<int>(rhWholePercent(sensorData.hum1))));
     doc["T2"]     = serialized(String(sensorData.temp2, 2));
-    doc["H2"]     = serialized(String(sensorData.hum2, 2));
+    doc["H2"]     = serialized(isnan(sensorData.hum2) ? String("-") : String(static_cast<int>(rhWholePercent(sensorData.hum2))));
     doc["durasi"] = serialized(String(actuator.lastDurS, 3));
 
     String line;
@@ -800,9 +818,9 @@ bool writeLogManual(float yBefore, float yInput, int8_t dir)
     doc["Event"]     = "MANUAL_ON";
     doc["dir"]       = (dir > 0) ? "buka" : "tutup";
     doc["T1"]        = serialized(String(sensorData.temp1, 2));
-    doc["H1"]        = serialized(String(sensorData.hum1, 2));
+    doc["H1"]        = serialized(isnan(sensorData.hum1) ? String("-") : String(static_cast<int>(rhWholePercent(sensorData.hum1))));
     doc["T2"]        = serialized(String(sensorData.temp2, 2));
-    doc["H2"]        = serialized(String(sensorData.hum2, 2));
+    doc["H2"]        = serialized(isnan(sensorData.hum2) ? String("-") : String(static_cast<int>(rhWholePercent(sensorData.hum2))));
     doc["durasi"]    = serialized(String(actuator.lastDurS, 3));
     doc["y_sebelum"] = serialized(String(yBefore, 2));
     doc["y_input"]   = serialized(String(yInput, 2));
@@ -862,12 +880,12 @@ void setupWebServer()
         JsonDocument doc;
         doc["timestamp"]          = sensorData.timestamp;
         doc["temp1_cal"]          = serialized(String(sensorData.temp1, 2));
-        doc["hum1_cal"]           = serialized(String(sensorData.hum1, 2));
+        doc["hum1_cal"]           = serialized(isnan(sensorData.hum1) ? String("-") : String(static_cast<int>(rhWholePercent(sensorData.hum1))));
         doc["temp2_cal"]          = serialized(String(sensorData.temp2, 2));
-        doc["hum2_cal"]           = serialized(String(sensorData.hum2, 2));
+        doc["hum2_cal"]           = serialized(isnan(sensorData.hum2) ? String("-") : String(static_cast<int>(rhWholePercent(sensorData.hum2))));
         doc["valve_status"]       = actuator.valveStatus;
         doc["valve_open"]         = actuator.valveOpen;
-        doc["avg_hum"]            = serialized(String(sensorData.hum1, 2));
+        doc["avg_hum"]            = serialized(isnan(sensorData.hum1) ? String("-") : String(static_cast<int>(rhWholePercent(sensorData.hum1))));
         doc["t1off"]              = config.temp1Offset;
         doc["h1off"]              = config.hum1Offset;
         doc["t2off"]              = config.temp2Offset;
@@ -883,7 +901,7 @@ void setupWebServer()
         if (isnan(sysSettings.hTemporer))
             doc["act_h_temporer"] = "-";
         else
-            doc["act_h_temporer"] = serialized(String(sysSettings.hTemporer, 2));
+            doc["act_h_temporer"] = serialized(String(static_cast<int>(rhWholePercent(sysSettings.hTemporer))));
         doc["act_speed"]          = config.speedCmS;
         doc["act_max_dur"]        = config.maxDurS;
         doc["act_y_cur"]          = serialized(String(actuator.yCurrent,  2));
@@ -1251,12 +1269,8 @@ void loop()
             Serial.printf("Waktu : %s\n", sensorData.timestamp.c_str());
             Serial.printf("WiFi AP: %s\n", sysStatus.wifiSta
                           ? WiFi.softAPIP().toString().c_str() : "off");
-            Serial.printf("[S1] Temp: %.2f→%.2f°C  RH: %.2f→%.2f%%\n",
-                          sensorData.rawTemp1, sensorData.temp1,
-                          sensorData.rawHum1,  sensorData.hum1);
-            Serial.printf("[S2] Temp: %.2f→%.2f°C  RH: %.2f→%.2f%%\n",
-                          sensorData.rawTemp2, sensorData.temp2,
-                          sensorData.rawHum2,  sensorData.hum2);
+            printSensorSerial(1, sensorData.rawTemp1, sensorData.temp1, sensorData.rawHum1, sensorData.hum1);
+            printSensorSerial(2, sensorData.rawTemp2, sensorData.temp2, sensorData.rawHum2, sensorData.hum2);
             Serial.println("--------------------------------\n");
             writeLog();
             sysSettings.lastLogTime  = nowMs;
@@ -1267,12 +1281,8 @@ void loop()
             Serial.printf("Waktu : %s\n", sensorData.timestamp.c_str());
             Serial.printf("WiFi AP: %s\n", sysStatus.wifiSta
                           ? WiFi.softAPIP().toString().c_str() : "off");
-            Serial.printf("[S1] Temp: %.2f→%.2f°C  RH: %.2f→%.2f%%\n",
-                          sensorData.rawTemp1, sensorData.temp1,
-                          sensorData.rawHum1,  sensorData.hum1);
-            Serial.printf("[S2] Temp: %.2f→%.2f°C  RH: %.2f→%.2f%%\n",
-                          sensorData.rawTemp2, sensorData.temp2,
-                          sensorData.rawHum2,  sensorData.hum2);
+            printSensorSerial(1, sensorData.rawTemp1, sensorData.temp1, sensorData.rawHum1, sensorData.hum1);
+            printSensorSerial(2, sensorData.rawTemp2, sensorData.temp2, sensorData.rawHum2, sensorData.hum2);
             Serial.println("--------------------------------\n");
             sysSettings.lastLogTime = nowMs;
             writeLog();

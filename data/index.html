@@ -6,48 +6,49 @@
   <title>Kernel Silo Monitor</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: Arial, sans-serif; background: #1a1a2e; color: #eee;
+    body { font-family: Arial, sans-serif; background: #eef2f7; color: #1a1a1a;
            padding: 16px; padding-top: 76px; }
     .app-header {
       position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
       display: flex; align-items: center; justify-content: space-between; gap: 10px;
-      padding: 10px 14px; background: #16213e; border-bottom: 2px solid #0f3460;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.25);
+      padding: 10px 14px; background: #ffffff; border-bottom: 1px solid #d8dee9;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
     }
-    .app-header__brand { font-weight: bold; color: #e94560; font-size: 16px; line-height: 1.2; }
-    .app-header__sub { font-size: 10px; color: #888; margin-top: 2px; }
+    .app-header__brand { font-weight: bold; color: #c73e54; font-size: 16px; line-height: 1.2; }
+    .app-header__sub { font-size: 10px; color: #5c6578; margin-top: 2px; }
     .app-header__right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
-    .header-clock { font-size: 13px; color: #fff; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .header-clock { font-size: 13px; color: #1a1a1a; font-variant-numeric: tabular-nums; white-space: nowrap; }
     .door-badge {
       font-size: 11px; font-weight: bold; padding: 5px 12px; border-radius: 999px;
       letter-spacing: 0.04em;
     }
-    .door-badge--open { background: #1a472a; color: #4ecca3; }
-    .door-badge--closed { background: #2a2a3e; color: #aaa; }
+    .door-badge--open { background: #d4edda; color: #155724; }
+    .door-badge--closed { background: #e9ecef; color: #495057; }
     .seg-wrap {
       display: flex; width: 100%; margin: 12px 0 4px;
-      border-radius: 10px; overflow: hidden; border: 2px solid #0f3460; background: #0f3460;
+      border-radius: 10px; overflow: hidden; border: 2px solid #ced4da; background: #ced4da;
     }
     .seg-wrap button {
       flex: 1; padding: 12px 8px; border: none; cursor: pointer; font-size: 14px; font-weight: bold;
-      background: #16213e; color: #888; transition: background 0.15s, color 0.15s;
+      background: #f8f9fa; color: #5c6578; transition: background 0.15s, color 0.15s;
     }
     .seg-wrap button.seg-active { background: #e94560; color: #fff; }
-    .seg-wrap button:not(.seg-active):hover { color: #ccc; }
-    .card { background: #16213e; border-radius: 12px; padding: 16px; margin-bottom: 12px; }
-    .card h2 { color: #0f3460; background: #e94560; padding: 6px 12px;
+    .seg-wrap button:not(.seg-active):hover { color: #1a1a1a; }
+    .card { background: #ffffff; border-radius: 12px; padding: 16px; margin-bottom: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08); border: 1px solid #e2e8f0; }
+    .card h2 { color: #fff; background: #e94560; padding: 6px 12px;
                border-radius: 8px; font-size: 14px; margin-bottom: 12px; }
     .row { display: flex; justify-content: space-between; margin-bottom: 8px; }
-    .label { color: #aaa; font-size: 13px; }
-    .value { font-weight: bold; color: #fff; font-size: 13px; }
-    .value.ok { color: #4ecca3; }
-    .value.warn { color: #f5a623; }
-    .divider { border: none; border-top: 1px solid #0f3460; margin: 8px 0; }
+    .label { color: #5c6578; font-size: 13px; }
+    .value { font-weight: bold; color: #1a1a1a; font-size: 13px; }
+    .value.ok { color: #0d7a4f; }
+    .value.warn { color: #c27a00; }
+    .divider { border: none; border-top: 1px solid #dee2e6; margin: 8px 0; }
     .form-group { margin-bottom: 10px; }
-    .form-group label { display: block; color: #aaa; font-size: 12px; margin-bottom: 4px; }
+    .form-group label { display: block; color: #5c6578; font-size: 12px; margin-bottom: 4px; }
     .form-group input { width: 100%; padding: 8px; border-radius: 6px;
-                        border: 1px solid #0f3460; background: #0f3460;
-                        color: #fff; font-size: 14px; text-align: center; }
+                        border: 1px solid #ced4da; background: #fff;
+                        color: #1a1a1a; font-size: 14px; text-align: center; }
     .btn { width: 100%; padding: 12px; background: #e94560; color: white;
            border: none; border-radius: 8px; font-size: 15px;
            cursor: pointer; margin-top: 4px; }
@@ -58,20 +59,20 @@
       cursor: text; margin-top: 4px; text-align: center; box-sizing: border-box;
     }
     .interval-input::placeholder { color: rgba(255,255,255,0.65); }
-    .interval-input:focus { outline: 2px solid #fff; outline-offset: 2px; }
+    .interval-input:focus { outline: 2px solid #1a1a1a; outline-offset: 2px; }
     .alert { padding: 10px; border-radius: 8px; text-align: center;
              font-size: 13px; margin-top: 8px; display: none; }
-    .alert.success { background: #1a472a; color: #4ecca3; display: block; }
-    .alert.error   { background: #4a1a1a; color: #e94560; display: block; }
-    .timestamp { text-align: center; color: #555; font-size: 11px; margin-top: 8px; }
+    .alert.success { background: #d4edda; color: #155724; display: block; border: 1px solid #c3e6cb; }
+    .alert.error   { background: #f8d7da; color: #721c24; display: block; border: 1px solid #f5c6cb; }
+    .timestamp { text-align: center; color: #6c757d; font-size: 11px; margin-top: 8px; }
     .loading-overlay { display: none; position: fixed; top: 0; left: 0;
-      width: 100%; height: 100%; background: rgba(0,0,0,0.6);
+      width: 100%; height: 100%; background: rgba(255,255,255,0.82);
       z-index: 1100; justify-content: center; align-items: center; flex-direction: column; }
     .loading-overlay.active { display: flex; }
-    .spinner { width: 48px; height: 48px; border: 5px solid #0f3460;
+    .spinner { width: 48px; height: 48px; border: 5px solid #dee2e6;
       border-top: 5px solid #e94560; border-radius: 50%;
       animation: spin 0.8s linear infinite; }
-    .loading-text { color: #fff; margin-top: 12px; font-size: 14px; }
+    .loading-text { color: #1a1a1a; margin-top: 12px; font-size: 14px; }
     @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
@@ -93,8 +94,8 @@
     </div>
   </header>
 
-  <div class="card" id="wifi_card" style="display:none; background:#4a1a1a;">
-    <div style="text-align:center; color:#e94560; font-size:13px;">
+  <div class="card" id="wifi_card" style="display:none; background:#fff5f5; border-color:#f5c6cb;">
+    <div style="text-align:center; color:#c62828; font-size:13px;">
       ⚠️ Koneksi ke ESP32 terputus! Halaman tidak terupdate.
     </div>
   </div>
@@ -113,7 +114,7 @@
 
   <div class="card">
     <h2>🔧 Aktuator linear</h2>
-    <p style="color:#aaa; font-size:11px; margin-bottom:10px;">
+    <p style="color:#5c6578; font-size:11px; margin-bottom:10px;">
       Stroke mekanik hingga <b id="act_stroke_lbl">50</b> cm. Posisi estimasi dari durasi gerak terakhir.
     </p>
     <div class="seg-wrap" role="tablist" aria-label="Mode kontrol">
@@ -126,27 +127,27 @@
     <div id="panel_auto">
       <div class="row"><span class="label">RH auto (hTemporer)</span><span class="value" id="act_h_temporer_disp">-</span></div>
       <div class="row"><span class="label">Peta RH → stem</span>
-        <span class="value" style="color:#aaa; font-size:12px; text-align:right; max-width:58%;" id="act_map_hint">-</span></div>
+        <span class="value" style="color:#5c6578; font-size:12px; text-align:right; max-width:58%;" id="act_map_hint">-</span></div>
     </div>
     <div class="row" id="act_busy_row" style="display:none;">
       <span class="label">Gerak</span><span class="value warn">⏳ Relay aktif…</span>
     </div>
     <hr class="divider">
     <div id="panel_manual" style="display:none;">
-    <b style="color:#e94560; font-size:13px;">🖐 Kontrol Manual</b>
-    <p style="color:#aaa; font-size:11px; margin:4px 0 6px 0;">
+    <b style="color:#c73e54; font-size:13px;">🖐 Kontrol Manual</b>
+    <p style="color:#5c6578; font-size:11px; margin:4px 0 6px 0;">
       PT = panjang total, DT = durasi total → <b>1 cm = DT/PT detik</b>. PD = posisi diinginkan (cm).
     </p>
     <div class="row" style="margin-bottom:6px;">
       <span class="label">PT / DT / cm per s</span>
-      <span class="value" style="color:#aaa; font-size:11px; text-align:right; max-width:62%;" id="man_cal_hint">-</span>
+      <span class="value" style="color:#5c6578; font-size:11px; text-align:right; max-width:62%;" id="man_cal_hint">-</span>
     </div>
     <div class="form-group" style="margin-bottom:8px;">
       <label>Panjang diinginkan PD (cm)</label>
       <input type="text" inputmode="decimal" id="manual_pd_cm" autocomplete="off" class="interval-input"
         style="font-size:14px;" placeholder="contoh: 15"
         oninput="updateManualMoveHint()" onfocus="manualMoveEditing=true" onblur="manualMoveEditing=false">
-      <p style="color:#888; font-size:11px; margin-top:6px;">
+      <p style="color:#6c757d; font-size:11px; margin-top:6px;">
         Perkiraan: <b id="manual_move_hint">-</b> · target dibatasi
         <span id="act_y_min_hint">0</span>–<span id="act_y_max_hint">30</span> cm
       </p>
@@ -155,12 +156,12 @@
     <div id="valve_alert" class="alert"></div>
     </div>
     <hr class="divider">
-    <p style="color:#888; font-size:11px; margin-bottom:8px;">
+    <p style="color:#6c757d; font-size:11px; margin-bottom:8px;">
       Interval ini memacu <b>pembacaan sensor</b> dan (mode Auto) <b>cek aktuator</b> — sama dengan pengaturan di bawah.
     </p>
     <div class="row"><span class="label">Interval pengukuran</span><span class="value ok" id="relay_interval">-</span></div>
     <div style="margin-top:12px;">
-      <b style="color:#e94560; font-size:13px;">⏱ Ubah interval pengukuran</b>
+      <b style="color:#c73e54; font-size:13px;">⏱ Ubah interval pengukuran</b>
       <div class="form-group" style="margin-bottom:0;">
         <label>Interval (detik)</label>
         <input type="text" inputmode="numeric" id="relay_interval_input" autocomplete="off"
@@ -175,7 +176,7 @@
 
   <div class="card">
     <h2>⚙️ Setting aktuator linear</h2>
-    <p style="color:#aaa; font-size:11px; margin-bottom:10px;">
+    <p style="color:#5c6578; font-size:11px; margin-bottom:10px;">
       <b>Manual & auto:</b> stroke min = tutup, stroke maks = buka (cm); PT/DT untuk manual. <b>Auto:</b> bandingkan RH vs <code>hTemporer</code>;
       <code>k = maxDur/RH_max</code>, <code>x = -((H·k)−(hTemporer·k))</code> → durasi <code>|x|</code>.
     </p>
@@ -201,41 +202,41 @@
 
   <div class="card">
     <h2>⚙️ Setting Kalibrasi</h2>
-    <p style="color:#aaa; font-size:12px; margin-bottom:12px;">
+    <p style="color:#5c6578; font-size:12px; margin-bottom:12px;">
       Offset = Nilai Referensi - Nilai Sensor<br>
       Contoh: ref=28.0, sensor=28.5 → offset=-0.5
     </p>
-    <b style="color:#e94560; font-size:13px;">Sensor 1</b>
+    <b style="color:#c73e54; font-size:13px;">Sensor 1</b>
     <div style="display:flex; gap:8px; margin-top:8px; margin-bottom:12px;">
       <div class="form-group" style="flex:1"><label>Offset Suhu (°C)</label>
         <div style="display:flex; gap:4px;">
-          <button onclick="adjustValue('t1off',-0.1)" style="padding:8px 12px; background:#0f3460; color:#fff; border:none; border-radius:6px; font-size:16px; cursor:pointer;">−</button>
+          <button onclick="adjustValue('t1off',-0.1)" style="padding:8px 12px; background:#5c6bc0; color:#fff; border:none; border-radius:6px; font-size:16px; cursor:pointer;">−</button>
           <input type="text" id="t1off" placeholder="0.0">
-          <button onclick="adjustValue('t1off', 0.1)" style="padding:8px 12px; background:#0f3460; color:#fff; border:none; border-radius:6px; font-size:16px; cursor:pointer;">+</button>
+          <button onclick="adjustValue('t1off', 0.1)" style="padding:8px 12px; background:#5c6bc0; color:#fff; border:none; border-radius:6px; font-size:16px; cursor:pointer;">+</button>
         </div>
       </div>
       <div class="form-group" style="flex:1"><label>Offset RH (%)</label>
         <div style="display:flex; gap:4px;">
-          <button onclick="adjustValue('h1off',-0.1)" style="padding:8px 12px; background:#0f3460; color:#fff; border:none; border-radius:6px; font-size:16px; cursor:pointer;">−</button>
+          <button onclick="adjustValue('h1off',-0.1)" style="padding:8px 12px; background:#5c6bc0; color:#fff; border:none; border-radius:6px; font-size:16px; cursor:pointer;">−</button>
           <input type="text" id="h1off" placeholder="0.0">
-          <button onclick="adjustValue('h1off', 0.1)" style="padding:8px 12px; background:#0f3460; color:#fff; border:none; border-radius:6px; font-size:16px; cursor:pointer;">+</button>
+          <button onclick="adjustValue('h1off', 0.1)" style="padding:8px 12px; background:#5c6bc0; color:#fff; border:none; border-radius:6px; font-size:16px; cursor:pointer;">+</button>
         </div>
       </div>
     </div>
-    <b style="color:#e94560; font-size:13px;">Sensor 2</b>
+    <b style="color:#c73e54; font-size:13px;">Sensor 2</b>
     <div style="display:flex; gap:8px; margin-top:8px; margin-bottom:12px;">
       <div class="form-group" style="flex:1"><label>Offset Suhu (°C)</label>
         <div style="display:flex; gap:4px;">
-          <button onclick="adjustValue('t2off',-0.1)" style="padding:8px 12px; background:#0f3460; color:#fff; border:none; border-radius:6px; font-size:16px; cursor:pointer;">−</button>
+          <button onclick="adjustValue('t2off',-0.1)" style="padding:8px 12px; background:#5c6bc0; color:#fff; border:none; border-radius:6px; font-size:16px; cursor:pointer;">−</button>
           <input type="text" id="t2off" placeholder="0.0">
-          <button onclick="adjustValue('t2off', 0.1)" style="padding:8px 12px; background:#0f3460; color:#fff; border:none; border-radius:6px; font-size:16px; cursor:pointer;">+</button>
+          <button onclick="adjustValue('t2off', 0.1)" style="padding:8px 12px; background:#5c6bc0; color:#fff; border:none; border-radius:6px; font-size:16px; cursor:pointer;">+</button>
         </div>
       </div>
       <div class="form-group" style="flex:1"><label>Offset RH (%)</label>
         <div style="display:flex; gap:4px;">
-          <button onclick="adjustValue('h2off',-0.1)" style="padding:8px 12px; background:#0f3460; color:#fff; border:none; border-radius:6px; font-size:16px; cursor:pointer;">−</button>
+          <button onclick="adjustValue('h2off',-0.1)" style="padding:8px 12px; background:#5c6bc0; color:#fff; border:none; border-radius:6px; font-size:16px; cursor:pointer;">−</button>
           <input type="text" id="h2off" placeholder="0.0">
-          <button onclick="adjustValue('h2off', 0.1)" style="padding:8px 12px; background:#0f3460; color:#fff; border:none; border-radius:6px; font-size:16px; cursor:pointer;">+</button>
+          <button onclick="adjustValue('h2off', 0.1)" style="padding:8px 12px; background:#5c6bc0; color:#fff; border:none; border-radius:6px; font-size:16px; cursor:pointer;">+</button>
         </div>
       </div>
     </div>
@@ -253,14 +254,14 @@
       <a href="/log/download" style="flex:2; text-decoration:none;">
         <button class="btn" style="width:100%;">⬇️ Download Log</button>
       </a>
-      <button onclick="clearLogData()" class="btn" style="flex:1; background:#4a1a1a; color:#e94560;">🗑 Delete</button>
+      <button onclick="clearLogData()" class="btn" style="flex:1; background:#f8d7da; color:#721c24; border:1px solid #f5c6cb;">🗑 Delete</button>
     </div>
     <div id="log_alert" class="alert"></div>
   </div>
 
   <div class="card">
     <h2>🕒 System (RTC & Log)</h2>
-    <p style="color:#aaa; font-size:11px; margin-bottom:10px;">Waktu sistem ditampilkan di pojok kanan atas halaman.</p>
+    <p style="color:#5c6578; font-size:11px; margin-bottom:10px;">Waktu sistem ditampilkan di pojok kanan atas halaman.</p>
     <button class="btn" type="button" onclick="syncRtcFromBrowser()">Sinkron RTC (waktu device ini)</button>
     <div id="rtc_alert" class="alert"></div>
     <hr class="divider">
@@ -273,7 +274,7 @@
     </div>
     <div id="log_interval_alert" class="alert"></div>
     <hr class="divider">
-    <button type="button" class="btn" style="background:#3d2a1a; color:#f5a623;"
+    <button type="button" class="btn" style="background:#fff3cd; color:#856404; border:1px solid #ffeeba;"
       onclick="restartSystem()">↻ Restart sistem</button>
     <div id="restart_alert" class="alert"></div>
   </div>
@@ -327,6 +328,16 @@
       return (ms / 1000) + ' detik';
     }
 
+    /** Polling /data lebih cepat dari interval sensor agar nilai baru tertangkap segera setelah firmware mengukur. */
+    function computeDataPollMs(relayMs) {
+      const r = Number(relayMs);
+      const ms = (r > 0 && r <= 86400000) ? r : 5000;
+      if (ms <= 120000) {
+        return Math.max(800, Math.min(2500, Math.floor(ms / 2)));
+      }
+      return Math.min(120000, Math.max(5000, Math.floor(ms / 10)));
+    }
+
     function fetchData() {
       return fetch('/data')
         .then(r => r.json())
@@ -336,7 +347,13 @@
           document.getElementById('hum1_cal').textContent  = d.hum1_cal  + ' %';
           document.getElementById('temp2_cal').textContent = d.temp2_cal + ' °C';
           document.getElementById('hum2_cal').textContent  = d.hum2_cal  + ' %';
-          document.getElementById('ts').textContent = 'Update data: ' + d.timestamp;
+          {
+            const ageMs = (d.sample_age_ms !== undefined && d.sample_age_ms !== null) ? Number(d.sample_age_ms) : NaN;
+            const ageStr = !isNaN(ageMs) && ageMs >= 0
+              ? ' · usia sampel ~' + (ageMs >= 1000 ? (ageMs / 1000).toFixed(1) + ' s' : Math.round(ageMs) + ' ms')
+              : '';
+            document.getElementById('ts').textContent = 'Update data: ' + d.timestamp + ageStr;
+          }
           document.getElementById('header_clock').textContent = d.rtc_now || '—';
           const doorEl = document.getElementById('door_badge');
           if (doorEl) {
@@ -352,7 +369,7 @@
           if (document.activeElement.id !== 'h2off') document.getElementById('h2off').value = d.h2off;
 
           document.getElementById('valve_status').textContent = d.valve_status;
-          document.getElementById('valve_status').style.color = '#4ecca3';
+          document.getElementById('valve_status').style.color = '#0d7a4f';
           document.getElementById('act_y_tgt_disp').textContent = d.act_y_prev + ' cm';
           document.getElementById('avg_hum').textContent = d.avg_hum + ' %';
           document.getElementById('act_stroke_lbl').textContent = d.act_stroke_cm;
@@ -381,7 +398,7 @@
           if (!manualMoveEditing) updateManualMoveHint();
 
           const ms = d.relay_interval_ms;
-          dataPollMs = Math.min(120000, Math.max(2000, ms || 5000));
+          dataPollMs = computeDataPollMs(ms || 5000);
           document.getElementById('relay_interval').textContent = formatIntervalMs(ms);
           if (!relayIntervalEditing)
             document.getElementById('relay_interval_input').value = Math.round(ms / 1000);
@@ -475,7 +492,7 @@
         .then(d => {
           hideLoading();
           const applied = d.interval_ms;
-          dataPollMs = Math.min(120000, Math.max(2000, applied || 5000));
+          dataPollMs = computeDataPollMs(applied || 5000);
           document.getElementById('relay_interval_input').value = Math.round(applied / 1000);
           document.getElementById('relay_interval').textContent = formatIntervalMs(applied);
           showIntervalAlert(true, '✅ Interval: ' + formatIntervalMs(applied));
