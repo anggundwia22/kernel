@@ -800,19 +800,19 @@
         <div class="ctitle">Panel konfigurasi</div>
       </div>
       <p class="hint" style="margin-top:-6px;">
-        Geser tab ke samping di layar kecil. Interval pengukuran, aktuator, kalibrasi, log, dan sistem dipisah agar halaman lebih ringkas.
+        Geser tab ke samping di layar kecil. Interval pengukuran, sistem, aktuator, kalibrasi, dan log dipisah agar halaman lebih ringkas.
       </p>
       <div class="settings-tablist" role="tablist" aria-label="Tab pengaturan">
         <button type="button" class="settings-tab on" role="tab" aria-selected="true" id="tab_settings_interval"
           onclick="settingsTab('interval', this)">Interval</button>
+        <button type="button" class="settings-tab" role="tab" aria-selected="false" id="tab_settings_sistem"
+          onclick="settingsTab('sistem', this)">Sistem</button>
         <button type="button" class="settings-tab" role="tab" aria-selected="false" id="tab_settings_actuator"
           onclick="settingsTab('actuator', this)">Aktuator</button>
         <button type="button" class="settings-tab" role="tab" aria-selected="false" id="tab_settings_kalibrasi"
           onclick="settingsTab('kalibrasi', this)">Kalibrasi</button>
         <button type="button" class="settings-tab" role="tab" aria-selected="false" id="tab_settings_log"
           onclick="settingsTab('log', this)">Log</button>
-        <button type="button" class="settings-tab" role="tab" aria-selected="false" id="tab_settings_sistem"
-          onclick="settingsTab('sistem', this)">Sistem</button>
       </div>
 
       <div id="panel_settings_interval" class="settings-panel on" role="tabpanel" aria-labelledby="tab_settings_interval">
