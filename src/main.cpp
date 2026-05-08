@@ -575,6 +575,11 @@ static void printSensorSerial(int idx, float rawT, float calT, float rawH, float
                       idx, rawT, calT, rawH, static_cast<int>(rhWholePercent(calH)));
 }
 
+// untuk sekarang 
+// posisi buka artinya motor putar kiri
+// posisi tutup arrtinya motor putar kanan
+// oleh karena itu dir nya diganti
+
 void updateActuatorFromHumidity()
 {
     if (actuatorIsBusy()) return;
@@ -620,8 +625,8 @@ void updateActuatorFromHumidity()
     }
 
     int8_t dir = 0;
-    if (x > 0.0f)      dir = 1;   // buka
-    else if (x < 0.0f) dir = -1;  // tutup
+    if (x > 0.0f)      dir = -1;  // buka
+    else if (x < 0.0f) dir = 1;  // tutup
     else {
         sysSettings.hTemporer = Hc;
         return;
