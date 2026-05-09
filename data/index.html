@@ -6,43 +6,102 @@
   <title>Kernel Silo Monitor</title>
   <!-- Tanpa font eksternal: saat WiFi AP perangkat, URL eksternal bisa mengganggu -->
   <style>
+    /* =====================================================
+       SOP Warna
+       - accent (cyan)  : brand, primary action, focus, active state
+       - gold   (amber) : aksen sekunder "kernel/grain"
+       - info   (sky)   : label informasi (mis. RH/humidity)
+       - success(emerald): status positif (valve open, OK)
+       - warn   (amber) : peringatan, busy, out-of-range
+       - danger (red)   : ERROR ONLY — koneksi putus, gagal, destructive
+       Merah TIDAK dipakai untuk brand/primer.
+       ===================================================== */
     :root {
-      --bg: #0c090a;
-      --surface: #120d0f;
-      --card: #181114;
-      --card2: #1c1417;
-      --border: #2a1f24;
-      --border2: #3d2e35;
-      --accent: #f43f5e;
-      --accent-dim: #e11d48;
-      --amber: #fbbf24;
-      --blue: #38bdf8;
-      --green: #4ade80;
-      --red: #f87171;
-      --text: #fce8ec;
-      --text-dim: #fda4af;
-      --muted: #8b6e76;
+      --bg: #0a0f17;
+      --surface: #0f1521;
+      --card: #131b2a;
+      --card2: #1a2334;
+      --border: #243149;
+      --border2: #344867;
+
+      --accent:     #22d3ee;             /* cyan-400 */
+      --accent-dim: #0891b2;             /* cyan-600 */
+      --accent-rgb: 34, 211, 238;
+      --accent-soft:   rgba(34,211,238,.12);
+      --accent-soft-2: rgba(34,211,238,.22);
+
+      --gold:       #fbbf24;             /* amber-400 — aksen sekunder */
+      --gold-dim:   #d97706;
+      --gold-rgb:   251, 191, 36;
+
+      --info:       #38bdf8;             /* sky-400 */
+      --info-rgb:   56, 189, 248;
+
+      --success:    #34d399;             /* emerald-400 */
+      --success-rgb: 52, 211, 153;
+      --success-soft: rgba(52,211,153,.12);
+
+      --warn:       #fbbf24;             /* amber-400 */
+      --warn-rgb:   251, 191, 36;
+      --warn-soft:  rgba(251,191,36,.12);
+
+      --danger:     #f87171;             /* red-400 — ERROR ONLY */
+      --danger-dim: #dc2626;
+      --danger-rgb: 248, 113, 113;
+      --danger-soft: rgba(248,113,113,.12);
+
+      --text:     #e2e8f0;               /* slate-200 */
+      --text-dim: #94a3b8;               /* slate-400 */
+      --muted:    #64748b;               /* slate-500 */
+
+      /* Legacy aliases (jangan dihapus — masih dipakai aturan CSS lain) */
+      --amber: var(--warn);
+      --blue:  var(--info);
+      --green: var(--success);
+      --red:   var(--danger);
+
       --mono: ui-monospace, 'Cascadia Code', 'Consolas', monospace;
       --sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
       --display: system-ui, -apple-system, sans-serif;
     }
 
     :root.light {
-      --bg: #faf5f6;
-      --surface: #f3e8ea;
+      --bg: #f8fafc;
+      --surface: #eef2f7;
       --card: #ffffff;
-      --card2: #faf5f6;
-      --border: #e8d4d8;
-      --border2: #d4b8bf;
-      --accent: #e11d48;
-      --accent-dim: #be123c;
-      --amber: #d97706;
-      --blue: #0284c7;
-      --green: #16a34a;
-      --red: #dc2626;
-      --text: #43181f;
-      --text-dim: #9f1239;
-      --muted: #7a5c63;
+      --card2: #f1f5f9;
+      --border: #e2e8f0;
+      --border2: #cbd5e1;
+
+      --accent:     #0891b2;             /* cyan-600 */
+      --accent-dim: #0e7490;             /* cyan-700 */
+      --accent-rgb: 8, 145, 178;
+      --accent-soft:   rgba(8,145,178,.10);
+      --accent-soft-2: rgba(8,145,178,.18);
+
+      --gold:       #d97706;             /* amber-600 */
+      --gold-dim:   #b45309;
+      --gold-rgb:   217, 119, 6;
+
+      --info:       #0284c7;             /* sky-600 */
+      --info-rgb:   2, 132, 199;
+
+      --success:    #059669;             /* emerald-600 */
+      --success-rgb: 5, 150, 105;
+      --success-soft: rgba(5,150,105,.10);
+
+      --warn:       #d97706;             /* amber-600 */
+      --warn-rgb:   217, 119, 6;
+      --warn-soft:  rgba(217,119,6,.10);
+
+      --danger:     #dc2626;             /* red-600 */
+      --danger-dim: #b91c1c;
+      --danger-rgb: 220, 38, 38;
+      --danger-soft: rgba(220,38,38,.10);
+
+      --text:     #0f172a;               /* slate-900 */
+      --text-dim: #334155;               /* slate-700 */
+      --muted:    #64748b;               /* slate-500 */
     }
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -55,14 +114,14 @@
       padding: 24px 20px 48px;
       transition: background .3s, color .3s;
       background-image:
-        radial-gradient(ellipse 55% 38% at 15% 0%, rgba(244, 63, 94, 0.09) 0%, transparent 58%),
-        radial-gradient(ellipse 42% 32% at 85% 100%, rgba(251, 191, 36, 0.06) 0%, transparent 52%);
+        radial-gradient(ellipse 60% 40% at 12% -4%, rgba(var(--accent-rgb), 0.10) 0%, transparent 60%),
+        radial-gradient(ellipse 45% 32% at 88% 100%, rgba(var(--gold-rgb),   0.06) 0%, transparent 55%);
     }
 
     :root.light body {
       background-image:
-        radial-gradient(ellipse 55% 38% at 15% 0%, rgba(225, 29, 72, 0.08) 0%, transparent 58%),
-        radial-gradient(ellipse 42% 32% at 85% 100%, rgba(217, 119, 6, 0.06) 0%, transparent 52%);
+        radial-gradient(ellipse 60% 40% at 12% -4%, rgba(var(--accent-rgb), 0.08) 0%, transparent 60%),
+        radial-gradient(ellipse 45% 32% at 88% 100%, rgba(var(--gold-rgb),   0.05) 0%, transparent 55%);
     }
 
     .wrap { max-width: 960px; margin: 0 auto; }
@@ -84,20 +143,26 @@
       height: 48px;
       border-radius: 14px;
       flex-shrink: 0;
-      background: linear-gradient(135deg, #9f1239, #fb7185);
+      background: linear-gradient(135deg, var(--accent-dim) 0%, var(--accent) 55%, var(--gold) 110%);
       display: flex;
       align-items: center;
       justify-content: center;
       font-size: 24px;
-      box-shadow: 0 0 22px rgba(244, 63, 94, 0.28);
+      box-shadow:
+        0 0 0 1px rgba(var(--accent-rgb), .25),
+        0 8px 24px rgba(var(--accent-rgb), .28);
     }
 
     .header-title {
       font-family: var(--display);
       font-size: 1.5rem;
       font-weight: 800;
-      color: var(--accent);
       line-height: 1.1;
+      background: linear-gradient(120deg, var(--accent) 0%, var(--gold) 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      letter-spacing: -0.01em;
     }
 
     .header-sub {
@@ -157,15 +222,15 @@
     }
 
     .door-badge--closed {
-      background: rgba(148, 163, 184, 0.12);
+      background: var(--card2);
       border-color: var(--border2);
-      color: var(--muted);
+      color: var(--text-dim);
     }
 
     .door-badge--open {
-      background: rgba(74, 222, 128, 0.12);
-      border-color: var(--green);
-      color: var(--green);
+      background: var(--success-soft);
+      border-color: rgba(var(--success-rgb), .55);
+      color: var(--success);
     }
 
     .door-badge::before {
@@ -174,6 +239,17 @@
       height: 8px;
       border-radius: 50%;
       background: currentColor;
+      box-shadow: 0 0 0 0 currentColor;
+    }
+
+    .door-badge--open::before {
+      animation: pulse-dot 2s ease-out infinite;
+    }
+
+    @keyframes pulse-dot {
+      0%   { box-shadow: 0 0 0 0 rgba(var(--success-rgb), .55); }
+      70%  { box-shadow: 0 0 0 8px rgba(var(--success-rgb), 0); }
+      100% { box-shadow: 0 0 0 0 rgba(var(--success-rgb), 0); }
     }
 
     .sec {
@@ -217,22 +293,26 @@
       margin-bottom: 14px;
       position: relative;
       overflow: hidden;
-      transition: border-color .3s, background .3s;
+      transition: border-color .25s ease, transform .25s ease, box-shadow .25s ease;
     }
 
-    .card:hover { border-color: var(--border2); }
+    .card:hover {
+      border-color: var(--border2);
+      box-shadow: 0 6px 22px -12px rgba(var(--accent-rgb), .35);
+    }
 
     .card::before {
       content: '';
       position: absolute;
       inset: 0;
-      background: linear-gradient(135deg, rgba(244, 63, 94, .04) 0%, transparent 55%);
+      background: linear-gradient(135deg, rgba(var(--accent-rgb), .035) 0%, transparent 55%);
       pointer-events: none;
     }
 
+    /* Card untuk koneksi putus / error global. Pakai DANGER (sesuai SOP). */
     .card--warn {
-      background: rgba(248, 113, 113, 0.08);
-      border-color: rgba(248, 113, 113, 0.35);
+      background: var(--danger-soft);
+      border-color: rgba(var(--danger-rgb), .35);
     }
 
     .card--warn::before { display: none; }
@@ -283,8 +363,11 @@
       z-index: 1;
     }
 
-    .env.temp { border-top: 2px solid #f97316; }
-    .env.humid { border-top: 2px solid var(--blue); }
+    /* Aksen kategori sensor — orange untuk suhu, biru untuk kelembaban (intuitif). */
+    .env.temp  { border-top: 2px solid #f97316; }
+    .env.humid { border-top: 2px solid var(--info); }
+    .env.temp  .clabel::before  { content: '🌡 '; }
+    .env.humid .clabel::before  { content: '💧 '; }
 
     .trow {
       display: flex;
@@ -307,12 +390,18 @@
       font-family: var(--mono);
     }
 
+    /* Nilai live di trow: netral (text), bukan hijau, supaya tidak misleading.
+       Status semantik via class .value-ok / .value-warn / .value-danger. */
     .trow .tv {
       font-family: var(--mono);
       font-weight: 600;
-      color: var(--green);
+      color: var(--text);
       font-size: 0.92rem;
     }
+    .value-ok     { color: var(--success) !important; }
+    .value-info   { color: var(--info)    !important; }
+    .value-accent { color: var(--accent)  !important; }
+    .value-danger { color: var(--danger)  !important; }
 
     .seg-wrap {
       display: flex;
@@ -393,8 +482,8 @@
 
     .fi:focus {
       outline: none;
-      border-color: var(--accent-dim);
-      box-shadow: 0 0 0 3px rgba(244, 63, 94, .12);
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-soft);
     }
 
     .fgrid {
@@ -425,37 +514,47 @@
 
     .btn:active { transform: scale(.97); }
 
+    /* Primary action — cyan (brand) */
     .btn-p {
-      background: rgba(244, 63, 94, .14);
-      border-color: var(--accent-dim);
+      background: var(--accent-soft);
+      border-color: rgba(var(--accent-rgb), .55);
       color: var(--accent);
     }
-
-    .btn-p:hover { background: rgba(244, 63, 94, .22); }
-
-    .btn-d {
-      background: rgba(248, 113, 113, .1);
-      border-color: #ef4444;
-      color: var(--red);
+    .btn-p:hover {
+      background: var(--accent-soft-2);
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px rgba(var(--accent-rgb), .25);
     }
 
-    .btn-d:hover { background: rgba(248, 113, 113, .18); }
+    /* Destructive — red (SOP: hanya untuk aksi merusak / error) */
+    .btn-d {
+      background: var(--danger-soft);
+      border-color: rgba(var(--danger-rgb), .55);
+      color: var(--danger);
+    }
+    .btn-d:hover {
+      background: rgba(var(--danger-rgb), .22);
+      border-color: var(--danger);
+    }
 
+    /* Ghost / secondary netral */
     .btn-g {
       background: var(--card2);
       border-color: var(--border);
       color: var(--text-dim);
     }
+    .btn-g:hover { border-color: var(--border2); color: var(--text); }
 
-    .btn-g:hover { border-color: var(--border2); }
-
+    /* Warning — amber */
     .btn-w {
-      background: rgba(251, 191, 36, .1);
-      border-color: #d97706;
-      color: var(--amber);
+      background: var(--warn-soft);
+      border-color: rgba(var(--warn-rgb), .55);
+      color: var(--warn);
     }
-
-    .btn-w:hover { background: rgba(251, 191, 36, .18); }
+    .btn-w:hover {
+      background: rgba(var(--warn-rgb), .22);
+      border-color: var(--warn);
+    }
 
     .btn-block { width: 100%; }
 
@@ -545,30 +644,46 @@
 
     .alert.success {
       display: block;
-      background: rgba(74, 222, 128, 0.12);
-      color: var(--green);
-      border: 1px solid rgba(74, 222, 128, 0.35);
+      background: var(--success-soft);
+      color: var(--success);
+      border: 1px solid rgba(var(--success-rgb), .35);
     }
 
     .alert.error {
       display: block;
-      background: rgba(248, 113, 113, 0.12);
-      color: var(--red);
-      border: 1px solid rgba(248, 113, 113, 0.35);
+      background: var(--danger-soft);
+      color: var(--danger);
+      border: 1px solid rgba(var(--danger-rgb), .35);
+    }
+
+    .alert.info {
+      display: block;
+      background: rgba(var(--info-rgb), .10);
+      color: var(--info);
+      border: 1px solid rgba(var(--info-rgb), .35);
+    }
+
+    .alert.warn {
+      display: block;
+      background: var(--warn-soft);
+      color: var(--warn);
+      border: 1px solid rgba(var(--warn-rgb), .35);
     }
 
     .loading-overlay {
       display: none;
       position: fixed;
       inset: 0;
-      background: rgba(12, 9, 10, 0.82);
+      background: rgba(10, 15, 23, 0.82);
+      backdrop-filter: blur(2px);
+      -webkit-backdrop-filter: blur(2px);
       z-index: 1100;
       justify-content: center;
       align-items: center;
       flex-direction: column;
     }
 
-    :root.light .loading-overlay { background: rgba(250, 245, 246, 0.88); }
+    :root.light .loading-overlay { background: rgba(248, 250, 252, 0.85); }
 
     .loading-overlay.active { display: flex; }
 
@@ -666,9 +781,11 @@
       white-space: nowrap;
     }
 
+    .settings-tab:hover { color: var(--text); border-color: var(--border2); }
+
     .settings-tab.on {
-      background: rgba(244, 63, 94, 0.14);
-      border-color: var(--accent-dim);
+      background: var(--accent-soft);
+      border-color: rgba(var(--accent-rgb), .55);
       color: var(--accent);
     }
 
@@ -772,7 +889,7 @@
         <button type="button" id="seg_manual" onclick="setControlMode(false)">Manual</button>
         <button type="button" id="seg_auto" class="seg-active" onclick="setControlMode(true)">Auto</button>
       </div>
-      <div class="trow" id="row_valve_status"><span class="tl">Posisi (estimasi)</span><span class="tv" id="valve_status">-</span></div>
+      <div class="trow" id="row_valve_status"><span class="tl">Posisi sekarang</span><span class="tv" id="valve_status">-</span></div>
       <div class="trow" id="row_act_prev"><span class="tl">Posisi sebelumnya</span><span class="tv" id="act_y_tgt_disp">-</span></div>
       <div class="trow" id="row_avg_hum"><span class="tl">Kelembaban Sensor 1</span><span class="tv" id="avg_hum">-</span></div>
       <div id="panel_auto">
