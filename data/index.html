@@ -369,6 +369,64 @@
     .env.temp  .clabel::before  { content: '🌡 '; }
     .env.humid .clabel::before  { content: '💧 '; }
 
+    /* Card monitoring sensor gabungan — dua kolom side-by-side (S1 & S2) */
+    .env-combo {
+      padding: 16px;
+      border-top: 2px solid;
+      border-image: linear-gradient(90deg, #f97316 0%, #f97316 50%, var(--info) 50%, var(--info) 100%) 1;
+    }
+    .env-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      position: relative;
+      z-index: 1;
+    }
+    .env-col-title {
+      font-family: var(--mono);
+      font-size: 0.62rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .env-col--temp  .env-col-title { color: #f97316; }
+    .env-col--humid .env-col-title { color: var(--info); }
+    .env-grid .trow {
+      padding: 8px 10px;
+      gap: 6px;
+      margin-bottom: 6px;
+    }
+    .env-grid .trow:last-child { margin-bottom: 0; }
+    .env-grid .trow .tl { font-size: 0.66rem; }
+    .env-grid .trow .tv { font-size: 0.84rem; }
+
+    @media (max-width: 480px) {
+      .env-combo { padding: 12px; }
+      .env-grid { gap: 8px; }
+      .env-col-title { font-size: 0.56rem; margin-bottom: 6px; padding-bottom: 4px; letter-spacing: 0.04em; }
+      .env-grid .trow {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 2px;
+        padding: 7px 9px;
+        margin-bottom: 5px;
+        flex-wrap: nowrap;
+      }
+      .env-grid .trow .tl { flex: 0 0 auto; font-size: 0.6rem; }
+      .env-grid .trow .tv {
+        margin-left: 0;
+        text-align: left;
+        font-size: 0.85rem;
+        font-weight: 700;
+      }
+    }
+
     .trow {
       display: flex;
       align-items: center;
@@ -705,39 +763,129 @@
     /* —— Mobile —— */
     @media (max-width: 480px) {
       body {
-        padding: 16px 12px max(28px, env(safe-area-inset-bottom, 0px));
+        padding: 8px 12px max(24px, env(safe-area-inset-bottom, 0px));
       }
-      .header { margin-bottom: 18px; gap: 12px; }
-      .header-title { font-size: 1.2rem; }
-      .header-sub { font-size: 0.72rem; }
-      .logo { width: 42px; height: 42px; font-size: 20px; border-radius: 12px; }
-      .header-right { width: 100%; justify-content: flex-start; }
-      .rtc-box { font-size: 0.74rem; padding: 7px 11px; }
-      .door-badge { font-size: 0.7rem; padding: 7px 11px; }
-      .sec { font-size: 0.62rem; margin: 18px 0 10px; }
-      .card { padding: 14px; margin-bottom: 12px; border-radius: 12px; }
-      .ctitle { font-size: 0.88rem; }
+      /* Header dua baris ringkas:
+         - Baris 1: logo + judul (full width, biar judul tidak terpotong).
+         - Baris 2: RTC | status pintu | tombol tema (sejajar, full width). */
+      .header {
+        margin-bottom: 12px;
+        gap: 8px 10px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .header-left {
+        flex: 1 1 100%;
+        gap: 10px;
+        min-width: 0;
+      }
+      .header-title {
+        font-size: 1.02rem;
+        line-height: 1.05;
+        letter-spacing: 0;
+      }
+      .header-sub {
+        font-size: 0.58rem;
+        margin-top: 2px;
+        opacity: 0.85;
+      }
+      .logo {
+        width: 34px;
+        height: 34px;
+        font-size: 17px;
+        border-radius: 9px;
+        box-shadow:
+          0 0 0 1px rgba(var(--accent-rgb), .25),
+          0 4px 12px rgba(var(--accent-rgb), .22);
+      }
+      .header-right {
+        flex: 1 1 100%;
+        width: 100%;
+        gap: 6px;
+        flex-wrap: nowrap;
+        justify-content: stretch;
+        align-items: stretch;
+      }
+      .rtc-box {
+        flex: 1 1 auto;
+        min-width: 0;
+        font-size: 0.64rem;
+        padding: 5px 9px;
+        line-height: 1.2;
+        border-radius: 7px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        white-space: nowrap;
+        overflow: hidden;
+      }
+      .rtc-box small {
+        display: inline;
+        font-size: 0.5rem;
+        margin: 0;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        flex: 0 0 auto;
+      }
+      .rtc-box span#header_clock {
+        flex: 1 1 auto;
+        text-overflow: ellipsis;
+        overflow: hidden;
+      }
+      .door-badge {
+        flex: 0 0 auto;
+        font-size: 0.6rem;
+        padding: 5px 9px;
+        border-radius: 7px;
+        gap: 5px;
+        white-space: nowrap;
+      }
+      .door-badge::before { width: 7px; height: 7px; }
+      .theme-btn {
+        flex: 0 0 auto;
+        width: 32px;
+        height: 32px;
+        font-size: 0.95rem;
+        border-radius: 7px;
+      }
+      /* Section label & card kompak — mengurangi padding/margin supaya konten lebih padat. */
+      .sec { font-size: 0.58rem; margin: 12px 0 6px; letter-spacing: 0.16em; }
+      .card { padding: 12px; margin-bottom: 8px; border-radius: 11px; }
+      .chard { margin-bottom: 10px; }
+      .ctitle { font-size: 0.82rem; }
       .env .clabel { font-size: 0.58rem; }
       .trow {
         flex-wrap: wrap;
-        gap: 6px 10px;
-        padding: 9px 12px;
+        gap: 5px 10px;
+        padding: 8px 11px;
       }
-      .trow .tl { flex: 1 1 100px; }
+      .trow .tl { flex: 1 1 100px; font-size: 0.66rem; }
       .trow .tv {
-        font-size: 0.82rem;
+        font-size: 0.78rem;
         text-align: right;
         margin-left: auto;
         max-width: 100%;
         word-break: break-word;
       }
-      .seg-wrap button { padding: 11px 6px; font-size: 0.72rem; min-height: 44px; }
-      .btn { min-height: 44px; padding: 11px 14px; font-size: 0.8rem; }
-      .step-btn { min-height: 44px; }
-      .fi { font-size: 0.85rem; padding: 11px 12px; min-height: 44px; }
-      .acts { flex-direction: column; align-items: stretch; }
+      /* Form group & label */
+      .fg { margin-bottom: 10px; gap: 5px; }
+      .fl { font-size: 0.62rem; }
+      .subhead { font-size: 0.72rem; margin: 8px 0 4px; }
+      .divider { margin: 10px 0; }
+      /* Toggle MANUAL/AUTO lebih ramping (40px masih touch-friendly). */
+      .seg-wrap { padding: 3px; margin: 10px 0 12px; border-radius: 9px; }
+      .seg-wrap button { padding: 9px 6px; font-size: 0.7rem; min-height: 40px; border-radius: 7px; }
+      /* Button & input: kurangi tinggi dari 44 → 40 px. */
+      .btn { min-height: 40px; padding: 9px 13px; font-size: 0.78rem; border-radius: 7px; }
+      .step-btn { min-height: 40px; min-width: 40px; padding: 0 12px; font-size: 1rem; }
+      .fi { font-size: 0.82rem; padding: 9px 11px; min-height: 40px; border-radius: 7px; }
+      .fax { margin-top: 12px; gap: 8px; }
+      .acts { flex-direction: column; align-items: stretch; gap: 6px; }
       .acts > a.btn,
       .acts > .btn { flex: none !important; width: 100%; }
+      /* Stat / dashboard kecil */
+      .dstat { padding: 10px; }
+      .dstats { gap: 8px; margin-bottom: 10px; }
     }
 
     /* —— Settings tabs (horizontal scroll on narrow screens) —— */
@@ -855,8 +1003,8 @@
           <small>RTC</small>
           <span id="header_clock">—</span>
         </div>
-        <button type="button" class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Ganti tema">🌙</button>
         <span id="door_badge" class="door-badge door-badge--closed">TERTUTUP</span>
+        <button type="button" class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Ganti tema">🌙</button>
       </div>
     </header>
 
@@ -867,16 +1015,18 @@
     </div>
 
     <div class="sec"><strong>Monitoring sensor</strong></div>
-    <div class="g2">
-      <div class="card env temp">
-        <div class="clabel">Sensor 1 — Utama (GPIO 4)</div>
-        <div class="trow"><span class="tl">Suhu</span><span class="tv" id="temp1_cal">-</span></div>
-        <div class="trow"><span class="tl">Kelembaban</span><span class="tv" id="hum1_cal">-</span></div>
-      </div>
-      <div class="card env humid">
-        <div class="clabel">Sensor 2 — Info (GPIO 15)</div>
-        <div class="trow"><span class="tl">Suhu</span><span class="tv" id="temp2_cal">-</span></div>
-        <div class="trow"><span class="tl">Kelembaban</span><span class="tv" id="hum2_cal">-</span></div>
+    <div class="card env-combo">
+      <div class="env-grid">
+        <div class="env-col env-col--temp">
+          <div class="env-col-title">🌡 S1 — Utama (GPIO 4)</div>
+          <div class="trow"><span class="tl">Suhu</span><span class="tv" id="temp1_cal">-</span></div>
+          <div class="trow"><span class="tl">Kelembaban</span><span class="tv" id="hum1_cal">-</span></div>
+        </div>
+        <div class="env-col env-col--humid">
+          <div class="env-col-title">💧 S2 — Info (GPIO 15)</div>
+          <div class="trow"><span class="tl">Suhu</span><span class="tv" id="temp2_cal">-</span></div>
+          <div class="trow"><span class="tl">Kelembaban</span><span class="tv" id="hum2_cal">-</span></div>
+        </div>
       </div>
     </div>
 
