@@ -892,9 +892,6 @@
       <div class="trow" id="row_valve_status"><span class="tl">Posisi sekarang</span><span class="tv" id="valve_status">-</span></div>
       <div class="trow" id="row_act_prev"><span class="tl">Posisi sebelumnya</span><span class="tv" id="act_y_tgt_disp">-</span></div>
       <div class="trow" id="row_avg_hum"><span class="tl">Kelembaban Sensor 1</span><span class="tv" id="avg_hum">-</span></div>
-      <div id="panel_auto">
-        <div class="trow"><span class="tl">RH auto (hTemporer)</span><span class="tv" id="act_h_temporer_disp">-</span></div>
-      </div>
       <div class="trow" id="act_busy_row" style="display:none;">
         <span class="tl">Gerak</span><span class="tv value-warn">Relay aktif…</span>
       </div>
@@ -906,6 +903,7 @@
             placeholder="contoh: 15"
             oninput="updateManualMoveHint()" onfocus="manualMoveEditing=true" onblur="manualMoveEditing=false">
         </div>
+        <div id="manual_move_hint" class="hint" style="margin:-4px 0 10px; font-family:var(--mono); color:var(--text-dim);">-</div>
         <button type="button" class="btn btn-p btn-block" onclick="manualValveOn()">Jalankan (ON)</button>
         <div id="valve_alert" class="alert"></div>
       </div>
@@ -1169,14 +1167,12 @@
       const segM = document.getElementById('seg_manual');
       const segA = document.getElementById('seg_auto');
       const panM = document.getElementById('panel_manual');
-      const panA = document.getElementById('panel_auto');
       const rowPos = document.getElementById('row_valve_status');
       const rowPrev = document.getElementById('row_act_prev');
       const rowHum = document.getElementById('row_avg_hum');
       if (segM) segM.classList.toggle('seg-active', !isAuto);
       if (segA) segA.classList.toggle('seg-active', isAuto);
       if (panM) panM.style.display = isAuto ? 'none' : 'block';
-      if (panA) panA.style.display = isAuto ? 'block' : 'none';
       if (rowPos) rowPos.style.display = isAuto ? 'none' : 'flex';
       if (rowPrev) rowPrev.style.display = isAuto ? 'none' : 'flex';
       if (rowHum) rowHum.style.display = isAuto ? 'flex' : 'none';
@@ -1256,9 +1252,7 @@
           }
           setText('act_y_tgt_disp', d.act_y_prev + ' cm');
           setText('avg_hum', d.avg_hum + ' %');
-          setText('act_stroke_lbl', d.act_stroke_cm);
-          setText('act_h_temporer_disp',
-            (d.act_h_temporer !== undefined && d.act_h_temporer !== '-') ? (d.act_h_temporer + ' %') : '—');
+
           setDisplay('act_busy_row', d.act_busy ? 'flex' : 'none');
           // Selama aktuator sibuk, paksa polling cepat agar Posisi sekarang langsung
           // ter-update begitu gerak selesai. Plus 1.5s ekstra untuk catch state final.
@@ -1303,23 +1297,25 @@
         .then(r => r.json())
         .then(d => {
           hideLoading();
-          const el = document.getElementById('log_alert');
-          el.className = 'alert success';
-          el.textContent = 'Log dihapus.';
-          setTimeout(() => el.style.display = 'none', 3000);
+          showAlert('log_alert', !!d.success, d.success ? 'Log dihapus.' : (d.error || 'Gagal'), 3000);
           fetchLogInfo();
+          kickFastPoll(2000);
         })
-        .catch(() => { hideLoading(); });
+        .catch(() => {
+          hideLoading();
+          showAlert('log_alert', false, 'Koneksi gagal', 3000);
+        });
     }
 
     function fetchLogInfo() {
       fetch('/log/info')
         .then(r => r.json())
         .then(d => {
-          document.getElementById('log_entries').textContent = d.entries + ' data';
-          document.getElementById('log_used').textContent   = d.used_kb + ' KB';
-          document.getElementById('log_free').textContent   = d.free_kb + ' KB';
-        });
+          setText('log_entries', d.entries + ' data');
+          setText('log_used',    d.used_kb + ' KB');
+          setText('log_free',    d.free_kb + ' KB');
+        })
+        .catch(() => { /* abaikan, polling berikutnya bisa coba lagi */ });
     }
 
     function adjustValue(id, delta) {
@@ -1334,22 +1330,22 @@
       const t2 = parseFloat(document.getElementById('t2off').value);
       const h2 = parseFloat(document.getElementById('h2off').value);
       if (isNaN(t1) || isNaN(h1) || isNaN(t2) || isNaN(h2)) {
-        const el = document.getElementById('alert');
-        el.className = 'alert error'; el.textContent = 'Input tidak valid.';
-        setTimeout(() => el.style.display = 'none', 3000); return;
+        showAlert('alert', false, 'Input tidak valid.', 3000);
+        return;
       }
       showLoading('Menyimpan kalibrasi...');
       fetch('/calibrate?t1=' + t1 + '&h1=' + h1 + '&t2=' + t2 + '&h2=' + h2)
         .then(r => r.json())
         .then(d => {
           hideLoading();
-          const el = document.getElementById('alert');
-          el.className = 'alert ' + (d.success ? 'success' : 'error');
-          el.textContent = d.success ? 'Kalibrasi disimpan.' : (d.error || 'Gagal menyimpan.');
-          setTimeout(() => el.style.display = 'none', 4000);
+          showAlert('alert', !!d.success,
+            d.success ? 'Kalibrasi disimpan.' : (d.error || 'Gagal menyimpan.'), 4000);
           if (d.success) kickFastPoll(2000);
         })
-        .catch(() => { hideLoading(); });
+        .catch(() => {
+          hideLoading();
+          showAlert('alert', false, 'Koneksi gagal.', 3000);
+        });
     }
 
     function showIntervalAlert(ok, text) {
@@ -1472,10 +1468,8 @@
     function manualValveOn() {
       const pd = parseFloat(document.getElementById('manual_pd_cm').value.trim().replace(',', '.'));
       if (isNaN(pd)) {
-        const el = document.getElementById('valve_alert');
-        el.style.display = 'block'; el.className = 'alert error';
-        el.textContent = 'Isi PD (cm) lebih dulu.';
-        setTimeout(() => el.style.display = 'none', 3500); return;
+        showAlert('valve_alert', false, 'Isi PD (cm) lebih dulu.', 3500);
+        return;
       }
       const hintEl = document.getElementById('manual_move_hint');
       const hint = hintEl ? (' ' + hintEl.textContent) : '';
@@ -1484,14 +1478,11 @@
         .then(r => r.json().then(d => ({ ok: r.ok, d })))
         .then(({ ok, d }) => {
           hideLoading();
-          const el = document.getElementById('valve_alert');
-          el.style.display = 'block';
-          el.className = ok && d.success ? 'alert success' : 'alert error';
-          el.textContent = ok && d.success
-            ? 'ON → target ' + d.target_cm + ' cm.' + hint
-            : (d.error || 'Gagal.');
-          setTimeout(() => el.style.display = 'none', 6000);
-          if (ok && d.success) {
+          const success = ok && d.success;
+          showAlert('valve_alert', success,
+            success ? ('ON → target ' + d.target_cm + ' cm.' + hint) : (d.error || 'Gagal.'),
+            6000);
+          if (success) {
             // Refresh segera supaya "Posisi sebelumnya" langsung berubah,
             // dan polling cepat selama aktuator masih bergerak supaya
             // "Posisi sekarang" cepat ter-update begitu move + settle selesai.
@@ -1500,9 +1491,7 @@
         })
         .catch(() => {
           hideLoading();
-          const el = document.getElementById('valve_alert');
-          el.className = 'alert error'; el.textContent = 'Koneksi gagal.';
-          setTimeout(() => el.style.display = 'none', 3000);
+          showAlert('valve_alert', false, 'Koneksi gagal.', 3000);
         });
     }
 
@@ -1515,10 +1504,8 @@
       const pt   = parseFloat(String(document.getElementById('pt_total').value).replace(',', '.'));
       const dt   = parseFloat(String(document.getElementById('dt_total').value).replace(',', '.'));
       if ([hmin,hmax,ymin,ymax,dur,pt,dt].some(x => isNaN(x))) {
-        const el = document.getElementById('actuator_alert');
-        el.className = 'alert error'; el.textContent = 'Semua field harus angka valid.';
-        el.style.display = 'block';
-        setTimeout(() => el.style.display = 'none', 3500); return;
+        showAlert('actuator_alert', false, 'Semua field harus angka valid.', 3500);
+        return;
       }
       const q = 'hmin=' + hmin + '&hmax=' + hmax + '&ymin=' + ymin + '&ymax=' + ymax
         + '&maxdur=' + dur + '&pt=' + pt + '&dt=' + dt;
@@ -1527,18 +1514,13 @@
         .then(r => r.json())
         .then(d => {
           hideLoading();
-          const el = document.getElementById('actuator_alert');
-          el.style.display = 'block';
-          el.className = 'alert ' + (d.success ? 'success' : 'error');
-          el.textContent = d.success ? 'Setting aktuator disimpan.' : (d.error || 'Gagal');
-          setTimeout(() => el.style.display = 'none', 4000);
+          showAlert('actuator_alert', !!d.success,
+            d.success ? 'Setting aktuator disimpan.' : (d.error || 'Gagal'), 4000);
           if (d.success) kickFastPoll(2000);
         })
         .catch(() => {
           hideLoading();
-          const el = document.getElementById('actuator_alert');
-          el.className = 'alert error'; el.textContent = 'Koneksi gagal';
-          el.style.display = 'block';
+          showAlert('actuator_alert', false, 'Koneksi gagal.', 3000);
         });
     }
 
@@ -1560,6 +1542,14 @@
           pollTimerId = setTimeout(scheduleFetchData, fast ? FAST_POLL_MS : dataPollMs);
         });
     }
+    /* Browser throttle setTimeout pada tab background (~1×/menit). Saat user
+       balik ke tab, paksa polling cepat singkat supaya UI cepat catch up. */
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'visible') {
+        kickFastPoll(2000);
+      }
+    });
+
     scheduleFetchData();
     refreshClock();
     setInterval(refreshClock, 1000);
