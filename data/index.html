@@ -883,9 +883,36 @@
       .acts { flex-direction: column; align-items: stretch; gap: 6px; }
       .acts > a.btn,
       .acts > .btn { flex: none !important; width: 100%; }
-      /* Stat / dashboard kecil */
-      .dstat { padding: 10px; }
-      .dstats { gap: 8px; margin-bottom: 10px; }
+      /* —— Settings tabs & isi panel-nya — semua dikompakkan di mobile —— */
+      .settings-shell { padding-bottom: 6px; }
+      .settings-shell > .chard { margin-bottom: 4px; }
+      .settings-shell .hint { font-size: 0.66rem; line-height: 1.4; margin-bottom: 8px; }
+      /* Tablist: tab lebih ramping (36px), font lebih kecil. */
+      .settings-tablist {
+        gap: 5px;
+        padding: 3px 2px 8px;
+        margin: 4px -2px 10px;
+      }
+      .settings-tab {
+        padding: 8px 11px;
+        min-height: 36px;
+        font-size: 0.62rem;
+        letter-spacing: 0.04em;
+        border-radius: 7px;
+      }
+      /* Konten dalam panel */
+      .settings-panel .subhead { font-size: 0.7rem; margin: 6px 0 4px; }
+      .settings-panel .hint { font-size: 0.66rem; margin-bottom: 8px; }
+      .fgrid { gap: 8px; }
+      /* Tab Log: stat 3 kolom sejajar di mobile (lebih ringkas dari 1 kolom). */
+      .dstats { grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 8px; }
+      .dstat { padding: 8px 6px; border-radius: 7px; }
+      .dstat .dv { font-size: 0.92rem; margin-bottom: 2px; }
+      .dstat .dl { font-size: 0.5rem; letter-spacing: 0.06em; }
+      /* Tab Aktuator/Kalibrasi: kurangi jarak antar form group. */
+      #panel_settings_actuator .fgrid,
+      #panel_settings_kalibrasi .fgrid { margin-bottom: 4px; }
+      #panel_settings_actuator > .btn-p.btn-block { margin-top: 10px; }
     }
 
     /* —— Settings tabs (horizontal scroll on narrow screens) —— */
