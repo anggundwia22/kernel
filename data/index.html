@@ -1094,6 +1094,29 @@
     let currentActY = 0;
     /** Selaras dengan interval pembacaan sensor di device (ms); dipakai untuk polling /data */
     let dataPollMs = 5000;
+    /** Sampai timestamp ini, polling /data dipercepat (untuk catch update aktuator setelah aksi). */
+    let fastPollUntilTs = 0;
+    const FAST_POLL_MS = 600;
+    /** ID setTimeout polling aktif — supaya bisa di-cancel saat kickFastPoll. */
+    let pollTimerId = null;
+
+    /**
+     * Refresh /data segera + paksa polling cepat selama `durationMs` ms.
+     * Penting: ini juga membatalkan setTimeout polling yang sedang pending dan
+     * me-restart chain. Tanpa ini, jika dataPollMs lama (mis. 2 menit untuk
+     * interval relay 1 jam), fetchData manual hanya jalan sekali dan chain
+     * tetap di cadence lambat — sehingga act_busy / posisi tidak ter-update
+     * sampai polling lambat berikutnya.
+     */
+    function kickFastPoll(durationMs) {
+      const dur = (typeof durationMs === 'number' && durationMs > 0) ? durationMs : 4000;
+      fastPollUntilTs = Math.max(fastPollUntilTs, Date.now() + dur);
+      if (pollTimerId !== null) {
+        clearTimeout(pollTimerId);
+        pollTimerId = null;
+      }
+      scheduleFetchData();
+    }
 
     // Null-safe DOM helpers: lewati saja kalau elemennya tidak ada di layout, supaya
     // satu id yang hilang tidak mematikan seluruh fetchData / pipeline render.
@@ -1166,6 +1189,7 @@
         .then(d => {
           hideLoading();
           applyModeUi(!!d.mode_auto);
+          kickFastPoll(2000);
         })
         .catch(() => {
           hideLoading();
@@ -1236,6 +1260,11 @@
           setText('act_h_temporer_disp',
             (d.act_h_temporer !== undefined && d.act_h_temporer !== '-') ? (d.act_h_temporer + ' %') : '—');
           setDisplay('act_busy_row', d.act_busy ? 'flex' : 'none');
+          // Selama aktuator sibuk, paksa polling cepat agar Posisi sekarang langsung
+          // ter-update begitu gerak selesai. Plus 1.5s ekstra untuk catch state final.
+          if (d.act_busy) {
+            fastPollUntilTs = Math.max(fastPollUntilTs, Date.now() + 1500);
+          }
           currentActY = parseFloat(d.act_y_cur) || 0;
 
           const actIds = ['act_h_min','act_h_max','act_y_min','act_y_max','act_max_dur','pt_total','dt_total'];
@@ -1318,6 +1347,7 @@
           el.className = 'alert ' + (d.success ? 'success' : 'error');
           el.textContent = d.success ? 'Kalibrasi disimpan.' : (d.error || 'Gagal menyimpan.');
           setTimeout(() => el.style.display = 'none', 4000);
+          if (d.success) kickFastPoll(2000);
         })
         .catch(() => { hideLoading(); });
     }
@@ -1348,6 +1378,7 @@
           document.getElementById('relay_interval_input').value = Math.round(applied / 1000);
           setRelayIntervalLabels(formatIntervalMs(applied));
           showIntervalAlert(true, 'Interval: ' + formatIntervalMs(applied));
+          kickFastPoll(2000);
         })
         .catch(() => { hideLoading(); showIntervalAlert(false, 'Gagal mengubah interval.'); });
     }
@@ -1410,6 +1441,7 @@
           if (d.success) {
             document.getElementById('log_interval_input').value = Math.round(d.log_interval_ms / 1000);
             document.getElementById('log_interval_view').textContent = formatIntervalMs(d.log_interval_ms);
+            kickFastPoll(2000);
           }
           showAlert('log_interval_alert', !!d.success,
             d.success ? ('Interval log: ' + formatIntervalMs(d.log_interval_ms)) : (d.error || 'Gagal'));
@@ -1459,6 +1491,12 @@
             ? 'ON → target ' + d.target_cm + ' cm.' + hint
             : (d.error || 'Gagal.');
           setTimeout(() => el.style.display = 'none', 6000);
+          if (ok && d.success) {
+            // Refresh segera supaya "Posisi sebelumnya" langsung berubah,
+            // dan polling cepat selama aktuator masih bergerak supaya
+            // "Posisi sekarang" cepat ter-update begitu move + settle selesai.
+            kickFastPoll(15000);
+          }
         })
         .catch(() => {
           hideLoading();
@@ -1494,6 +1532,7 @@
           el.className = 'alert ' + (d.success ? 'success' : 'error');
           el.textContent = d.success ? 'Setting aktuator disimpan.' : (d.error || 'Gagal');
           setTimeout(() => el.style.display = 'none', 4000);
+          if (d.success) kickFastPoll(2000);
         })
         .catch(() => {
           hideLoading();
@@ -1517,7 +1556,8 @@
       fetchData()
         .catch(() => {})
         .finally(() => {
-          setTimeout(scheduleFetchData, dataPollMs);
+          const fast = Date.now() < fastPollUntilTs;
+          pollTimerId = setTimeout(scheduleFetchData, fast ? FAST_POLL_MS : dataPollMs);
         });
     }
     scheduleFetchData();
